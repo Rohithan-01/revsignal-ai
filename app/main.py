@@ -7,6 +7,9 @@ from datetime import datetime, timedelta
 from app.database import SessionLocal
 from app.models import Deal
 from sqlalchemy import select
+from typing import List
+
+from app.schemas import DealResponse, DealCreate
 
 app = FastAPI(title="RevSignal API")
 
@@ -78,8 +81,7 @@ async def seed_deals():
             "message": "Dummy deals created",
             "count": len(deals)
         }
-
-@app.get("/deals")
+@app.get("/deals", response_model=List[DealResponse])
 async def get_deals():
     async with SessionLocal() as session:
         result = await session.execute(
@@ -88,3 +90,20 @@ async def get_deals():
         deals = result.scalars().all()
 
         return deals
+
+@app.post("/deals", response_model=DealResponse)
+async def create_deal(deal: DealCreate):
+    new_deal = Deal(
+        company=deal.company,
+        deal_value=deal.deal_value,
+        stage=deal.stage,
+        probability=deal.probability,
+        expected_close_date=deal.expected_close_date,
+    )
+
+    async with SessionLocal() as session:
+        session.add(new_deal)
+        await session.commit()
+        await session.refresh(new_deal)
+
+        return new_deal

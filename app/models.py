@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -17,8 +17,8 @@ class Deal(Base):
     stage: Mapped[str] = mapped_column(String(100))
     probability: Mapped[float] = mapped_column(Float)
     expected_close_date: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True
+       DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
