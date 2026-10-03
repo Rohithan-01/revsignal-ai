@@ -11,6 +11,7 @@ class DealResponse(BaseModel):
     probability: float
     risk_level: str
     is_overdue: bool
+    recommendation: str
     expected_close_date: datetime | None
     created_at: datetime
 
