@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.models import Deal
 from sqlalchemy import select
 from typing import List
+from app.risk_engine import calculate_risk
 
 from app.schemas import DealResponse, DealCreate
 
@@ -89,7 +90,21 @@ async def get_deals():
         )
         deals = result.scalars().all()
 
-        return deals
+        response = []
+
+        for deal in deals:
+            response.append({
+                "id": deal.id,
+                "company": deal.company,
+                "deal_value": deal.deal_value,
+                "stage": deal.stage,
+                "probability": deal.probability,
+                "risk_level": calculate_risk(deal.probability),
+                "expected_close_date": deal.expected_close_date,
+                "created_at": deal.created_at,
+            })
+
+        return response
 
 @app.post("/deals", response_model=DealResponse)
 async def create_deal(deal: DealCreate):
@@ -106,4 +121,13 @@ async def create_deal(deal: DealCreate):
         await session.commit()
         await session.refresh(new_deal)
 
-        return new_deal
+        return {
+    "id": new_deal.id,
+    "company": new_deal.company,
+    "deal_value": new_deal.deal_value,
+    "stage": new_deal.stage,
+    "probability": new_deal.probability,
+    "risk_level": calculate_risk(new_deal.probability),
+    "expected_close_date": new_deal.expected_close_date,
+    "created_at": new_deal.created_at,
+}

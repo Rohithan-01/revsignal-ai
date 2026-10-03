@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DealResponse(BaseModel):
@@ -9,6 +9,7 @@ class DealResponse(BaseModel):
     deal_value: float
     stage: str
     probability: float
+    risk_level: str
     expected_close_date: datetime | None
     created_at: datetime
 
@@ -18,5 +19,5 @@ class DealCreate(BaseModel):
     company: str
     deal_value: float
     stage: str
-    probability: float
+    probability: float = Field(ge=0, le=100)
     expected_close_date: datetime | None = None
