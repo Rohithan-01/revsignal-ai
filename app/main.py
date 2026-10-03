@@ -8,7 +8,7 @@ from app.database import SessionLocal
 from app.models import Deal
 from sqlalchemy import select
 from typing import List
-from app.risk_engine import calculate_risk
+from app.risk_engine import calculate_risk, is_deal_overdue
 
 from app.schemas import DealResponse, DealCreate
 
@@ -100,6 +100,7 @@ async def get_deals():
                 "stage": deal.stage,
                 "probability": deal.probability,
                 "risk_level": calculate_risk(deal.probability),
+                "is_overdue": is_deal_overdue(deal.expected_close_date),
                 "expected_close_date": deal.expected_close_date,
                 "created_at": deal.created_at,
             })
@@ -128,6 +129,7 @@ async def create_deal(deal: DealCreate):
     "stage": new_deal.stage,
     "probability": new_deal.probability,
     "risk_level": calculate_risk(new_deal.probability),
+    "is_overdue": is_deal_overdue(new_deal.expected_close_date),
     "expected_close_date": new_deal.expected_close_date,
     "created_at": new_deal.created_at,
 }

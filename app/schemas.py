@@ -10,6 +10,7 @@ class DealResponse(BaseModel):
     stage: str
     probability: float
     risk_level: str
+    is_overdue: bool
     expected_close_date: datetime | None
     created_at: datetime
 
