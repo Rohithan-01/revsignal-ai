@@ -5,8 +5,22 @@ from app.database import engine
 from datetime import datetime, timedelta
 
 from app.database import SessionLocal
-from app.models import Deal
+from app.models import Deal, Activity
 from sqlalchemy import select
+from typing import List
+from app.risk_engine import calculate_risk, is_deal_overdue
+from app.recommendation_engine import generate_recommendation
+from app.activity_engine import (
+    calculate_activity_signal,
+    get_activity_status,
+)
+
+from app.schemas import (
+    DealResponse,
+    DealCreate,
+    ActivityCreate,
+    ActivityResponse,
+)
 
 app = FastAPI(title="RevSignal API")
 
@@ -78,8 +92,7 @@ async def seed_deals():
             "message": "Dummy deals created",
             "count": len(deals)
         }
-
-@app.get("/deals")
+@app.get("/deals", response_model=List[DealResponse])
 async def get_deals():
     async with SessionLocal() as session:
         result = await session.execute(
@@ -87,4 +100,126 @@ async def get_deals():
         )
         deals = result.scalars().all()
 
-        return deals
+        response = []
+
+    for deal in deals:
+        risk_level = calculate_risk(deal.probability)
+        is_overdue = is_deal_overdue(deal.expected_close_date)
+        recommendation = generate_recommendation(
+            risk_level,
+            is_overdue
+        )
+
+        response.append({
+        "id": deal.id,
+        "company": deal.company,
+        "deal_value": deal.deal_value,
+        "stage": deal.stage,
+        "probability": deal.probability,
+        "risk_level": risk_level,
+        "is_overdue": is_overdue,
+        "recommendation": recommendation,
+        "expected_close_date": deal.expected_close_date,
+        "created_at": deal.created_at,
+        })
+
+        return response
+
+@app.post("/deals", response_model=DealResponse)
+async def create_deal(deal: DealCreate):
+    new_deal = Deal(
+        company=deal.company,
+        deal_value=deal.deal_value,
+        stage=deal.stage,
+        probability=deal.probability,
+        expected_close_date=deal.expected_close_date,
+    )
+
+    async with SessionLocal() as session:
+        session.add(new_deal)
+        await session.commit()
+        await session.refresh(new_deal)
+
+    risk_level = calculate_risk(new_deal.probability)
+    is_overdue = is_deal_overdue(new_deal.expected_close_date)
+    recommendation = generate_recommendation(
+         risk_level,
+         is_overdue
+    )
+
+    return {
+    "id": new_deal.id,
+    "company": new_deal.company,
+    "deal_value": new_deal.deal_value,
+    "stage": new_deal.stage,
+    "probability": new_deal.probability,
+    "risk_level": risk_level,
+    "is_overdue": is_overdue,
+    "recommendation": recommendation,
+    "expected_close_date": new_deal.expected_close_date,
+    "created_at": new_deal.created_at,
+    }
+
+@app.post("/activities", response_model=ActivityResponse)
+async def create_activity(activity: ActivityCreate):
+    new_activity = Activity(
+        deal_id=activity.deal_id,
+        activity_type=activity.activity_type,
+        activity_date=activity.activity_date,
+        notes=activity.notes,
+    )
+
+    async with SessionLocal() as session:
+        session.add(new_activity)
+        await session.commit()
+        await session.refresh(new_activity)
+
+        return new_activity
+
+@app.get("/activities", response_model=list[ActivityResponse])
+async def get_activities():
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(Activity)
+        )
+        activities = result.scalars().all()
+
+        return activities
+
+@app.get("/deals/{deal_id}/activities", response_model=list[ActivityResponse])
+async def get_deal_activities(deal_id: int):
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(Activity).where(Activity.deal_id == deal_id)
+        )
+        activities = result.scalars().all()
+
+        return activities
+
+@app.get("/deals/{deal_id}/activity-signal")
+async def get_activity_signal(deal_id: int):
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(Activity).where(Activity.deal_id == deal_id)
+        )
+
+        activities = result.scalars().all()
+
+        activity_dates = [
+            activity.activity_date
+            for activity in activities
+        ]
+
+        days_since_last_activity = calculate_activity_signal(
+            activity_dates
+        )
+
+        activity_status = get_activity_status(
+           days_since_last_activity
+          )
+
+        return {
+          "deal_id": deal_id,
+          "days_since_last_activity": days_since_last_activity,
+          "activity_status": activity_status,
+        }
