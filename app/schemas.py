@@ -23,3 +23,19 @@ class DealCreate(BaseModel):
     stage: str
     probability: float = Field(ge=0, le=100)
     expected_close_date: datetime | None = None
+
+class ActivityCreate(BaseModel):
+    deal_id: int
+    activity_type: str
+    activity_date: datetime
+    notes: str | None = None
+
+
+class ActivityResponse(BaseModel):
+    id: int
+    deal_id: int
+    activity_type: str
+    activity_date: datetime
+    notes: str | None
+
+    model_config = ConfigDict(from_attributes=True)
