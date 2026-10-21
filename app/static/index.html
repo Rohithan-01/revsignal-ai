@@ -1,226 +1,255 @@
-from __future__ import annotations
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RevSignal Dashboard</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --muted: #5f6f89;
+        --text: #172033;
+        --primary: #2557d6;
+        --border: #dfe7f3;
+        --success: #1aa66a;
+        --warning: #d08a00;
+        --danger: #d64545;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+      }
+      .brand { font-size: 2rem; font-weight: 700; }
+      form { display: flex; gap: 10px; align-items: center; }
+      button, input {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        font-size: 1rem;
+      }
+      button {
+        background: var(--primary);
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .card-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
+      .card-value { font-size: 2rem; font-weight: 700; margin-top: 10px; }
+      .section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+      .section-header {
+        margin-bottom: 12px;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); text-transform: uppercase; font-size: 0.75rem; }
+      .risk-pill {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.8rem;
+      }
+      .LOW { background: rgba(26,166,106,0.12); color: var(--success); }
+      .MEDIUM { background: rgba(208,138,0,0.12); color: var(--warning); }
+      .HIGH { background: rgba(214,69,69,0.12); color: var(--danger); }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 16px;
+      }
+      .detail-box {
+        background: #f7f9ff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .muted { color: var(--muted); }
+      .deal-button {
+        background: transparent;
+        border: none;
+        color: var(--primary);
+        padding: 0;
+        cursor: pointer;
+        font-size: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand">RevSignal</div>
+        <form id="uploadForm">
+          <input type="file" id="csvFile" accept=".csv" />
+          <button type="submit">Upload CSV</button>
+        </form>
+      </div>
 
-import json
-from pathlib import Path
+      <div id="metrics" class="cards"></div>
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func
+      <div class="section">
+        <div class="section-header">Open pipeline</div>
+        <div id="dealTable"></div>
+      </div>
 
-from app.database import SessionLocal, engine
-from app.database import Base
-from app.data_import import import_csv_records, synthetic_sample_rows
-from app.models import Deal
-from app.risk_engine import analyze_deal
-from app.schemas import DealRead, UploadResponse
+      <div class="section">
+        <div class="section-header">Deal detail</div>
+        <div id="dealDetail" class="detail-grid"></div>
+      </div>
+    </div>
 
-app = FastAPI(title="RevSignal", version="0.1.0")
-BASE_DIR = Path(__file__).resolve().parent
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+    <script>
+      const currency = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value || 0);
 
+      function renderMetrics(data) {
+        const cards = [
+          { label: 'Total open pipeline value', value: currency(data.total_open_pipeline_value) },
+          { label: 'Revenue at high risk', value: currency(data.revenue_high_risk) },
+          { label: 'High-risk deals', value: data.high_risk_deals },
+          { label: 'Deals needing attention', value: data.deals_needing_attention }
+        ];
+        document.getElementById('metrics').innerHTML = cards.map(card => `
+          <div class="card">
+            <div class="card-label">${card.label}</div>
+            <div class="card-value">${card.value}</div>
+          </div>
+        `).join('');
+      }
 
-@app.on_event("startup")
-def startup() -> None:
-    Base.metadata.create_all(bind=engine)
-
-
-@app.get("/")
-def dashboard_root() -> FileResponse:
-    return FileResponse(BASE_DIR / "static" / "index.html")
-
-
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok", "service": "RevSignal"}
-
-
-def _deal_to_response(deal: Deal) -> DealRead:
-    return DealRead(
-        id=deal.id,
-        deal_id=deal.deal_id,
-        account_name=deal.account_name,
-        deal_value=deal.deal_value,
-        stage=deal.stage,
-        status=deal.status,
-        created_date=deal.created_date,
-        expected_close_date=deal.expected_close_date,
-        last_activity_date=deal.last_activity_date,
-        activity_count=deal.activity_count,
-        meeting_count=deal.meeting_count,
-        email_count=deal.email_count,
-        stakeholder_count=deal.stakeholder_count,
-        risk_score=deal.risk_score,
-        risk_level=deal.risk_level,
-        risk_reasons=json.loads(deal.risk_reasons or "[]"),
-        recommended_action=deal.recommended_action,
-    )
-
-
-def _create_or_update_deal(record: dict[str, object], db) -> Deal:
-    existing = db.query(Deal).filter(Deal.deal_id == str(record["deal_id"])).first()
-    if existing is None:
-        existing = Deal(
-            deal_id=str(record["deal_id"]),
-            account_name=str(record["account_name"]),
-            deal_value=float(record.get("deal_value") or 0),
-            stage=str(record.get("stage") or "Unknown"),
-            status=str(record.get("status") or "open"),
-            created_date=record.get("created_date"),
-            expected_close_date=record.get("expected_close_date"),
-            last_activity_date=record.get("last_activity_date"),
-            activity_count=record.get("activity_count"),
-            meeting_count=record.get("meeting_count"),
-            email_count=record.get("email_count"),
-            stakeholder_count=record.get("stakeholder_count"),
-            risk_score=int(record.get("risk_score") or 0),
-            risk_level=str(record.get("risk_level") or "LOW"),
-            risk_reasons=json.dumps(record.get("risk_reasons") or []),
-            recommended_action=str(record.get("recommended_action") or ""),
-        )
-        db.add(existing)
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    existing.account_name = str(record["account_name"])
-    existing.deal_value = float(record.get("deal_value") or 0)
-    existing.stage = str(record.get("stage") or "Unknown")
-    existing.status = str(record.get("status") or "open")
-    existing.created_date = record.get("created_date")
-    existing.expected_close_date = record.get("expected_close_date")
-    existing.last_activity_date = record.get("last_activity_date")
-    existing.activity_count = record.get("activity_count")
-    existing.meeting_count = record.get("meeting_count")
-    existing.email_count = record.get("email_count")
-    existing.stakeholder_count = record.get("stakeholder_count")
-    existing.risk_score = int(record.get("risk_score") or 0)
-    existing.risk_level = str(record.get("risk_level") or "LOW")
-    existing.risk_reasons = json.dumps(record.get("risk_reasons") or [])
-    existing.recommended_action = str(record.get("recommended_action") or "")
-    db.commit()
-    db.refresh(existing)
-    return existing
-
-
-@app.post("/api/deals/upload", response_model=UploadResponse)
-def upload_deals(file: UploadFile = File(...)) -> UploadResponse:
-    try:
-        records = import_csv_records(file.file)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    with SessionLocal() as db:
-        for record in records:
-            _create_or_update_deal(record, db)
-
-    return UploadResponse(
-        success=True,
-        message=f"Imported {len(records)} deals from the uploaded file.",
-        records_imported=len(records),
-    )
-
-
-@app.get("/api/deals", response_model=list[DealRead])
-def list_deals(status: str | None = None, risk_level: str | None = None, stage: str | None = None):
-    with SessionLocal() as db:
-        query = db.query(Deal)
-        if status:
-            query = query.filter(Deal.status.ilike(status))
-        if risk_level:
-            query = query.filter(Deal.risk_level.ilike(risk_level))
-        if stage:
-            query = query.filter(Deal.stage.ilike(stage))
-
-        deals = query.order_by(Deal.risk_score.desc(), Deal.deal_value.desc()).all()
-        return [_deal_to_response(deal) for deal in deals]
-
-
-@app.get("/api/deals/{deal_id}", response_model=DealRead)
-def get_deal(deal_id: str):
-    with SessionLocal() as db:
-        deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
-        if deal is None:
-            raise HTTPException(status_code=404, detail=f"Deal {deal_id} was not found.")
-        return _deal_to_response(deal)
-
-
-@app.get("/api/deals/high-risk", response_model=list[DealRead])
-def list_high_risk_deals() -> list[DealRead]:
-    with SessionLocal() as db:
-        deals = db.query(Deal).filter(Deal.risk_level == "HIGH").order_by(Deal.risk_score.desc()).all()
-        return [_deal_to_response(deal) for deal in deals]
-
-
-@app.get("/api/metrics")
-def get_metrics() -> dict:
-    with SessionLocal() as db:
-        deals = db.query(Deal).all()
-        open_deals = [deal for deal in deals if str(deal.status).lower() in {"open", "active", "pipeline", "qualified", "proposal", "negative"}]
-
-        total_open_pipeline_value = sum(float(deal.deal_value) for deal in open_deals)
-        high_risk_deals = [deal for deal in open_deals if deal.risk_level == "HIGH"]
-        revenue_high_risk = sum(float(deal.deal_value) for deal in high_risk_deals)
-        deals_needing_attention = sum(1 for deal in open_deals if deal.risk_level in {"HIGH", "MEDIUM"})
-
-        risk_distribution = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
-        for deal in open_deals:
-            risk_distribution[str(deal.risk_level).upper()] = risk_distribution.get(str(deal.risk_level).upper(), 0) + 1
-
-        pipeline_value_by_stage: dict[str, float] = {}
-        for deal in open_deals:
-            pipeline_value_by_stage[deal.stage] = pipeline_value_by_stage.get(deal.stage, 0.0) + float(deal.deal_value)
-
-        top_deals = sorted(open_deals, key=lambda deal: deal.risk_score, reverse=True)[:10]
-        return {
-            "total_open_pipeline_value": round(total_open_pipeline_value, 2),
-            "revenue_high_risk": round(revenue_high_risk, 2),
-            "high_risk_deals": len(high_risk_deals),
-            "deals_needing_attention": deals_needing_attention,
-            "deal_distribution_by_risk": risk_distribution,
-            "pipeline_value_by_stage": {key: round(value, 2) for key, value in pipeline_value_by_stage.items()},
-            "top_deals": [_deal_to_response(deal).model_dump() for deal in top_deals],
+      function renderTable(deals) {
+        if (!deals.length) {
+          document.getElementById('dealTable').innerHTML = '<div class="muted">No deals loaded yet. Upload a CSV to begin.</div>';
+          return;
         }
 
+        document.getElementById('dealTable').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Stage</th>
+                <th>Value</th>
+                <th>Risk</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${deals.map(deal => `
+                <tr>
+                  <td><button class="deal-button" data-deal-id="${deal.deal_id}">${deal.account_name}</button></td>
+                  <td>${deal.stage}</td>
+                  <td>${currency(deal.deal_value)}</td>
+                  <td><span class="risk-pill ${deal.risk_level}">${deal.risk_level}</span> (${deal.risk_score})</td>
+                  <td>${deal.recommended_action || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
 
-@app.post("/api/deals/{deal_id}/analyze", response_model=DealRead)
-def analyze_deal_endpoint(deal_id: str):
-    with SessionLocal() as db:
-        deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
-        if deal is None:
-            raise HTTPException(status_code=404, detail=f"Deal {deal_id} was not found.")
+        document.querySelectorAll('.deal-button').forEach(btn => {
+          btn.addEventListener('click', () => fetchDeal(btn.dataset.dealId));
+        });
+      }
 
-        record = {
-            "deal_id": deal.deal_id,
-            "account_name": deal.account_name,
-            "deal_value": deal.deal_value,
-            "stage": deal.stage,
-            "status": deal.status,
-            "created_date": deal.created_date,
-            "expected_close_date": deal.expected_close_date,
-            "last_activity_date": deal.last_activity_date,
-            "activity_count": deal.activity_count,
-            "meeting_count": deal.meeting_count,
-            "email_count": deal.email_count,
-            "stakeholder_count": deal.stakeholder_count,
+      function renderDetail(deal) {
+        document.getElementById('dealDetail').innerHTML = `
+          <div class="detail-box">
+            <h3>${deal.account_name}</h3>
+            <p><strong>Deal ID:</strong> ${deal.deal_id}</p>
+            <p><strong>Stage:</strong> ${deal.stage}</p>
+            <p><strong>Status:</strong> ${deal.status}</p>
+            <p><strong>Deal value:</strong> ${currency(deal.deal_value)}</p>
+            <p><strong>Expected close:</strong> ${deal.expected_close_date || 'N/A'}</p>
+            <p><strong>Last activity:</strong> ${deal.last_activity_date || 'N/A'}</p>
+            <p><strong>Stakeholders:</strong> ${deal.stakeholder_count ?? 'N/A'}</p>
+          </div>
+          <div class="detail-box">
+            <p><strong>Risk:</strong> <span class="risk-pill ${deal.risk_level}">${deal.risk_level}</span> ${deal.risk_score}</p>
+            <h4>Evidence</h4>
+            <ul>${(deal.risk_reasons || []).map(item => `<li>${item}</li>`).join('')}</ul>
+            <h4>Recommended action</h4>
+            <p>${deal.recommended_action || 'No recommendation available.'}</p>
+          </div>
+        `;
+      }
+
+      async function fetchDeals() {
+        const response = await fetch('/api/deals');
+        const deals = await response.json();
+        renderTable(deals);
+        if (deals.length) fetchDeal(deals[0].deal_id);
+      }
+
+      async function fetchMetrics() {
+        const response = await fetch('/api/metrics');
+        const metrics = await response.json();
+        renderMetrics(metrics);
+        renderTable(metrics.top_deals || []);
+        if ((metrics.top_deals || []).length) fetchDeal(metrics.top_deals[0].deal_id);
+      }
+
+      async function fetchDeal(dealId) {
+        const response = await fetch(`/api/deals/${dealId}`);
+        if (!response.ok) return;
+        const deal = await response.json();
+        renderDetail(deal);
+      }
+
+      document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('csvFile');
+        if (!input.files.length) return;
+
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+
+        const response = await fetch('/api/deals/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          fetchMetrics();
+          fetchDeals();
+        } else {
+          const error = await response.json();
+          alert(error.detail || 'Upload failed');
         }
+      });
 
-        assessment = analyze_deal(record)
-        deal.risk_score = assessment["risk_score"]
-        deal.risk_level = assessment["risk_level"]
-        deal.risk_reasons = json.dumps(assessment["risk_reasons"])
-        deal.recommended_action = assessment["recommended_action"]
-        db.commit()
-        db.refresh(deal)
-        return _deal_to_response(deal)
-
-
-@app.get("/seed/sample")
-def seed_sample_data() -> dict:
-    with SessionLocal() as db:
-        rows = synthetic_sample_rows()
-        for row in rows:
-            assessment = analyze_deal(row)
-            _create_or_update_deal(assessment, db)
-
-    return {"message": "Seed data loaded successfully.", "records_imported": len(synthetic_sample_rows())}
+      fetchMetrics();
+      fetchDeals();
+    </script>
+  </body>
+</html>

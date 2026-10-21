@@ -1,25 +1,41 @@
 # RevSignal
 
-RevSignal is an AI-powered revenue copilot that detects deal risks, predicts sales outcomes, recommends next-best actions, and automates CRM workflows for B2B sales teams.
+RevSignal is an AI-powered revenue copilot that identifies risky deals, explains why they are risky, recommends next-best actions, and surfaces a clean B2B sales dashboard for pipeline management.
 
 ## Overview
 
-This repository begins as a lightweight Python MVP for the core product flow:
+This repository implements a foundational Python FastAPI MVP for the core product flow:
 
 - CSV upload and normalization
-- Deal validation
-- Rule-based risk scoring
-- Action recommendations
-- Dashboard metrics and drill-down detail views
-
-The project intentionally keeps the initial implementation explainable and deterministic. It does not require paid APIs or external CRM credentials to run locally.
+- validation for malformed and incomplete CRM records
+- rule-based explainable deal risk scoring
+- deterministic next-best actions
+- dashboard metrics based on imported deal data
 
 ## Repository structure
 
-- `app/` — FastAPI application, risk engine, CSV importer, and static dashboard
-- `data/` — sample CRM dataset for local development
-- `docs/` — product and data documentation
-- `tests/` — validation and risk-scoring tests
+```text
+app/
+  data_import.py
+  database.py
+  main.py
+  models.py
+  recommendation_engine.py
+  risk_engine.py
+  static/index.html
+
+data/
+  sample_crm.csv
+
+docs/
+  product-requirements.md
+  system-architecture.md
+  data-dictionary.md
+
+tests/
+  test_data_import.py
+  test_risk_engine.py
+```
 
 ## Local setup
 
@@ -37,17 +53,17 @@ Then open:
 
 ## Environment
 
-Create a local environment file if needed:
+Use the provided example config if needed:
 
 ```bash
 cp .env.example .env
 ```
 
-The default configuration uses a local SQLite database file.
+The default configuration uses SQLite at the repository root as `revsignal.db`.
 
 ## Sample data
 
-A sample CRM dataset is included in `data/sample_crm.csv`. Upload it through the dashboard or via the API.
+The repo includes `data/sample_crm.csv`, a clearly labelled synthetic CRM dataset for local development.
 
 ## API endpoints
 
@@ -58,7 +74,8 @@ A sample CRM dataset is included in `data/sample_crm.csv`. Upload it through the
 - `GET /api/deals/high-risk`
 - `GET /api/metrics`
 - `POST /api/deals/{deal_id}/analyze`
+- `GET /seed/sample`
 
-## Notes
+## Notes and assumptions
 
-This MVP is intentionally rule-based and transparent. It is designed to support future ML or LLM-powered extensions without exposing them in the initial product flow.
+This MVP intentionally uses a transparent, rule-based scoring model rather than claiming statistical model accuracy. It is built to be easy to evolve later with historical outcomes and ML-based prediction workflows.

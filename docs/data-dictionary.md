@@ -1,14 +1,23 @@
-# RevSignal system architecture
+# RevSignal data dictionary
 
-## Runtime shape
+## Standard CRM fields
 
-The current MVP uses a single FastAPI service backed by SQLite. The application stores deal records and calculates risk using a rule-based engine.
+- `deal_id`: unique opportunity identifier
+- `account_name`: account or customer name
+- `deal_value`: value of the opportunity
+- `stage`: pipeline stage
+- `created_date`: when the deal entered the pipeline
+- `expected_close_date`: target close date
+- `last_activity_date`: most recent customer or internal touchpoint
+- `activity_count`: number of recorded activities
+- `meeting_count`: number of meetings
+- `email_count`: number of customer email touches
+- `stakeholder_count`: size of the buying group
+- `status`: open, won, or lost
 
-## Layers
+## Derived values
 
-- API layer: `/api/*` endpoints in `app/main.py`
-- Data access: SQLAlchemy models in `app/models.py`
-- Risk logic: `app/risk_engine.py`
-- Recommendation logic: `app/recommendation_engine.py`
-- CSV import: `app/data_import.py`
-- UI: static dashboard in `app/static/index.html`
+- `risk_score`: integer score from 0 to 100
+- `risk_level`: LOW, MEDIUM, or HIGH
+- `risk_reasons`: evidence for the risk score
+- `recommended_action`: deterministic action recommendation

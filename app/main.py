@@ -1,139 +1,224 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-import pandas as pd
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
+from app.data_import import import_csv_records, synthetic_sample_rows
+from app.database import Base, SessionLocal, engine
+from app.models import Deal
 from app.risk_engine import analyze_deal
+from app.schemas import DealRead, MetricsResponse, UploadResponse
 
-REQUIRED_FIELDS = {
-    "deal_id",
-    "account_name",
-    "deal_value",
-    "stage",
-    "status",
-}
-
-FIELD_ALIASES = {
-    "deal_id": ["deal_id", "dealid", "opportunity_id", "id", "deal", "deal id"],
-    "account_name": ["account_name", "account", "account_name", "company", "customer_name", "customer"],
-    "deal_value": ["deal_value", "amount", "value", "revenue", "opportunity_value"],
-    "stage": ["stage", "sales_stage", "deal_stage", "pipeline_stage"],
-    "created_date": ["created_date", "created_at", "created", "date_created"],
-    "expected_close_date": ["expected_close_date", "close_date", "expected_close", "close_date_expected"],
-    "last_activity_date": ["last_activity_date", "last_activity", "last_touch", "last_contact_date"],
-    "activity_count": ["activity_count", "activities", "total_activity_count"],
-    "meeting_count": ["meeting_count", "meetings", "meeting_total"],
-    "email_count": ["email_count", "emails", "email_total"],
-    "stakeholder_count": ["stakeholder_count", "stakeholders", "decision_makers"],
-    "status": ["status", "deal_status", "opportunity_status"],
-}
+app = FastAPI(title="RevSignal", version="0.1.0")
+BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
-def _normalize_key(key: Any) -> str:
-    return str(key).strip().lower().replace(" ", "_")
+@app.on_event("startup")
+def startup() -> None:
+    Base.metadata.create_all(bind=engine)
 
 
-def _coerce_numeric(value: Any) -> float | None:
-    if value is None or str(value).strip() in {"", "nan", "NaN"}:
-        return None
+@app.get("/")
+def dashboard_root() -> FileResponse:
+    return FileResponse(BASE_DIR / "static" / "index.html")
+
+
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok", "service": "RevSignal"}
+
+
+def _deal_to_response(deal: Deal) -> DealRead:
+    return DealRead(
+        id=deal.id,
+        deal_id=deal.deal_id,
+        account_name=deal.account_name,
+        deal_value=float(deal.deal_value),
+        stage=deal.stage,
+        status=deal.status,
+        created_date=deal.created_date,
+        expected_close_date=deal.expected_close_date,
+        last_activity_date=deal.last_activity_date,
+        activity_count=deal.activity_count,
+        meeting_count=deal.meeting_count,
+        email_count=deal.email_count,
+        stakeholder_count=deal.stakeholder_count,
+        risk_score=deal.risk_score,
+        risk_level=deal.risk_level,
+        risk_reasons=json.loads(deal.risk_reasons or "[]"),
+        recommended_action=deal.recommended_action,
+    )
+
+
+def _upsert_deal(db, assessment: dict[str, object]) -> Deal:
+    deal_id = str(assessment["deal_id"])
+    existing = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+    if existing is not None:
+        existing.account_name = str(assessment.get("account_name") or "Unknown account")
+        existing.deal_value = float(assessment.get("deal_value") or 0)
+        existing.stage = str(assessment.get("stage") or "Unknown")
+        existing.status = str(assessment.get("status") or "open")
+        existing.created_date = assessment.get("created_date")
+        existing.expected_close_date = assessment.get("expected_close_date")
+        existing.last_activity_date = assessment.get("last_activity_date")
+        existing.activity_count = assessment.get("activity_count")
+        existing.meeting_count = assessment.get("meeting_count")
+        existing.email_count = assessment.get("email_count")
+        existing.stakeholder_count = assessment.get("stakeholder_count")
+        existing.risk_score = int(assessment.get("risk_score") or 0)
+        existing.risk_level = str(assessment.get("risk_level") or "LOW")
+        existing.risk_reasons = json.dumps(assessment.get("risk_reasons") or [])
+        existing.recommended_action = str(assessment.get("recommended_action") or "")
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    new_deal = Deal(
+        deal_id=deal_id,
+        account_name=str(assessment.get("account_name") or "Unknown account"),
+        deal_value=float(assessment.get("deal_value") or 0),
+        stage=str(assessment.get("stage") or "Unknown"),
+        status=str(assessment.get("status") or "open"),
+        created_date=assessment.get("created_date"),
+        expected_close_date=assessment.get("expected_close_date"),
+        last_activity_date=assessment.get("last_activity_date"),
+        activity_count=assessment.get("activity_count"),
+        meeting_count=assessment.get("meeting_count"),
+        email_count=assessment.get("email_count"),
+        stakeholder_count=assessment.get("stakeholder_count"),
+        risk_score=int(assessment.get("risk_score") or 0),
+        risk_level=str(assessment.get("risk_level") or "LOW"),
+        risk_reasons=json.dumps(assessment.get("risk_reasons") or []),
+        recommended_action=str(assessment.get("recommended_action") or ""),
+    )
+    db.add(new_deal)
+    db.commit()
+    db.refresh(new_deal)
+    return new_deal
+
+
+@app.post("/api/deals/upload", response_model=UploadResponse)
+def upload_deals(file: UploadFile = File(...)) -> UploadResponse:
     try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+        imported = import_csv_records(file.file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    with SessionLocal() as db:
+        for record in imported:
+            _upsert_deal(db, record)
+
+    return UploadResponse(
+        success=True,
+        message=f"Imported {len(imported)} deals from the uploaded file.",
+        records_imported=len(imported),
+    )
 
 
-def _coerce_date(value: Any) -> datetime | None:
-    if value is None or str(value).strip() in {"", "nan", "NaN"}:
-        return None
-    try:
-        return pd.to_datetime(value).to_pydatetime()
-    except Exception:
-        return None
+@app.get("/api/deals", response_model=list[DealRead])
+def list_deals(status: str | None = None, risk_level: str | None = None, stage: str | None = None):
+    with SessionLocal() as db:
+        query = db.query(Deal)
+        if status:
+            query = query.filter(Deal.status.ilike(status))
+        if risk_level:
+            query = query.filter(Deal.risk_level.ilike(risk_level))
+        if stage:
+            query = query.filter(Deal.stage.ilike(stage))
+        deals = query.order_by(Deal.risk_score.desc(), Deal.deal_value.desc()).all()
+        return [_deal_to_response(deal) for deal in deals]
 
 
-def normalize_record(raw_record: dict[str, Any]) -> dict[str, Any]:
-    normalized: dict[str, Any] = {}
-    for canonical, aliases in FIELD_ALIASES.items():
-        for raw_key, raw_value in raw_record.items():
-            normalized_key = _normalize_key(raw_key)
-            if normalized_key in {alias.lower() for alias in aliases}:
-                normalized[canonical] = raw_value
-                break
-
-    if "status" not in normalized or not str(normalized.get("status") or "").strip():
-        normalized["status"] = "open"
-
-    if "deal_id" not in normalized or not str(normalized.get("deal_id") or "").strip():
-        raise ValueError("The CSV is missing a valid deal_id column or value.")
-
-    if "account_name" not in normalized or not str(normalized.get("account_name") or "").strip():
-        raise ValueError("The CSV is missing a valid account_name column or value.")
-
-    if "deal_value" not in normalized:
-        normalized["deal_value"] = 0
-    if "stage" not in normalized or not str(normalized.get("stage") or "").strip():
-        normalized["stage"] = "Unknown"
-
-    normalized["deal_value"] = _coerce_numeric(normalized.get("deal_value")) or 0
-    normalized["created_date"] = _coerce_date(normalized.get("created_date"))
-    normalized["expected_close_date"] = _coerce_date(normalized.get("expected_close_date"))
-    normalized["last_activity_date"] = _coerce_date(normalized.get("last_activity_date"))
-    normalized["activity_count"] = _coerce_numeric(normalized.get("activity_count"))
-    normalized["meeting_count"] = _coerce_numeric(normalized.get("meeting_count"))
-    normalized["email_count"] = _coerce_numeric(normalized.get("email_count"))
-    normalized["stakeholder_count"] = _coerce_numeric(normalized.get("stakeholder_count"))
-
-    if normalized["activity_count"] is not None:
-        normalized["activity_count"] = int(normalized["activity_count"])
-    if normalized["meeting_count"] is not None:
-        normalized["meeting_count"] = int(normalized["meeting_count"])
-    if normalized["email_count"] is not None:
-        normalized["email_count"] = int(normalized["email_count"])
-    if normalized["stakeholder_count"] is not None:
-        normalized["stakeholder_count"] = int(normalized["stakeholder_count"])
-
-    return normalized
+@app.get("/api/deals/{deal_id}", response_model=DealRead)
+def get_deal(deal_id: str):
+    with SessionLocal() as db:
+        deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+        if deal is None:
+            raise HTTPException(status_code=404, detail=f"Deal {deal_id} was not found.")
+        return _deal_to_response(deal)
 
 
-def import_csv_records(file_obj: Any) -> list[dict[str, Any]]:
-    uploaded = file_obj.read()
-    if not uploaded:
-        raise ValueError("The uploaded CSV file is empty.")
+@app.get("/api/deals/high-risk", response_model=list[DealRead])
+def list_high_risk_deals() -> list[DealRead]:
+    with SessionLocal() as db:
+        deals = db.query(Deal).filter(Deal.risk_level == "HIGH").order_by(Deal.risk_score.desc()).all()
+        return [_deal_to_response(deal) for deal in deals]
 
-    csv_path = Path("/tmp/revsignal_upload.csv")
-    csv_path.write_bytes(uploaded)
 
-    try:
-        frame = pd.read_csv(csv_path)
-    except Exception as exc:  # pragma: no cover - defensive
-        raise ValueError(f"Unable to parse the file as CSV: {exc}") from exc
+@app.get("/api/metrics", response_model=MetricsResponse)
+def get_metrics() -> MetricsResponse:
+    with SessionLocal() as db:
+        deals = db.query(Deal).all()
+        open_deals = [deal for deal in deals if str(deal.status).lower() in {"open", "active", "pipeline", "qualified", "proposal", "negotiation", "discovery", "in_progress"}]
 
-    if frame.empty:
-        raise ValueError("The uploaded CSV file does not contain any rows.")
+        total_open_pipeline_value = sum(float(deal.deal_value) for deal in open_deals)
+        high_risk_deals = [deal for deal in open_deals if deal.risk_level == "HIGH"]
+        revenue_high_risk = sum(float(deal.deal_value) for deal in high_risk_deals)
+        deals_needing_attention = sum(1 for deal in open_deals if deal.risk_level in {"HIGH", "MEDIUM"})
 
-    rows: list[dict[str, Any]] = []
-    for _, row in frame.iterrows():
-        record = normalize_record(row.to_dict())
-        rows.append(record)
+        risk_distribution = {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+        for deal in open_deals:
+            level = str(deal.risk_level).upper()
+            risk_distribution[level] = risk_distribution.get(level, 0) + 1
 
-    if not rows:
-        raise ValueError("No records were loaded from the uploaded CSV file.")
+        pipeline_value_by_stage: dict[str, float] = {}
+        for deal in open_deals:
+            stage = deal.stage
+            pipeline_value_by_stage[stage] = pipeline_value_by_stage.get(stage, 0.0) + float(deal.deal_value)
 
-    missing_fields = sorted(REQUIRED_FIELDS - set().union(*(row.keys() for row in rows)))
-    if missing_fields:
-        raise ValueError(
-            "The uploaded CSV is missing required fields for the RevSignal schema. "
-            f"Missing: {', '.join(missing_fields)}"
+        top_deals = sorted(open_deals, key=lambda deal: deal.risk_score, reverse=True)[:10]
+        return MetricsResponse(
+            total_open_pipeline_value=round(total_open_pipeline_value, 2),
+            revenue_high_risk=round(revenue_high_risk, 2),
+            high_risk_deals=len(high_risk_deals),
+            deals_needing_attention=deals_needing_attention,
+            deal_distribution_by_risk=risk_distribution,
+            pipeline_value_by_stage={key: round(value, 2) for key, value in pipeline_value_by_stage.items()},
+            top_deals=[_deal_to_response(deal).model_dump() for deal in top_deals],
         )
 
-    return [analyze_deal(row) for row in rows]
+
+@app.post("/api/deals/{deal_id}/analyze", response_model=DealRead)
+def analyze_deal_endpoint(deal_id: str):
+    with SessionLocal() as db:
+        deal = db.query(Deal).filter(Deal.deal_id == deal_id).first()
+        if deal is None:
+            raise HTTPException(status_code=404, detail=f"Deal {deal_id} was not found.")
+
+        record = {
+            "deal_id": deal.deal_id,
+            "account_name": deal.account_name,
+            "deal_value": deal.deal_value,
+            "stage": deal.stage,
+            "status": deal.status,
+            "created_date": deal.created_date,
+            "expected_close_date": deal.expected_close_date,
+            "last_activity_date": deal.last_activity_date,
+            "activity_count": deal.activity_count,
+            "meeting_count": deal.meeting_count,
+            "email_count": deal.email_count,
+            "stakeholder_count": deal.stakeholder_count,
+        }
+        assessment = analyze_deal(record)
+        deal.risk_score = assessment["risk_score"]
+        deal.risk_level = assessment["risk_level"]
+        deal.risk_reasons = json.dumps(assessment["risk_reasons"])
+        deal.recommended_action = assessment["recommended_action"]
+        db.commit()
+        db.refresh(deal)
+        return _deal_to_response(deal)
 
 
-def synthetic_sample_rows() -> list[dict[str, Any]]:
-    csv_path = Path(__file__).resolve().parent.parent / "data" / "sample_crm.csv"
-    frame = pd.read_csv(csv_path)
-    return [normalize_record(row.to_dict()) for _, row in frame.iterrows()]
+@app.get("/seed/sample")
+def seed_sample_data() -> dict:
+    with SessionLocal() as db:
+        for row in synthetic_sample_rows():
+            assessment = analyze_deal(row)
+            _upsert_deal(db, assessment)
+
+    return {"message": "Seed data loaded successfully.", "records_imported": len(synthetic_sample_rows())}

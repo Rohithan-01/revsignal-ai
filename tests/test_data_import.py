@@ -1,47 +1,21 @@
-from app.risk_engine import analyze_deal
+from app.data_import import normalize_record
 
 
-def test_high_risk_is_identified_for_overdue_low_activity_deal():
-    record = {
-        "deal_id": "D-100",
-        "account_name": "Test Account",
-        "deal_value": 50000,
-        "stage": "Proposal",
-        "status": "open",
-        "created_date": "2026-01-01",
-        "expected_close_date": "2026-10-01",
-        "last_activity_date": "2026-08-15",
-        "activity_count": 1,
-        "meeting_count": 0,
-        "email_count": 0,
-        "stakeholder_count": 1,
+def test_normalize_record_handles_aliases_and_missing_optional_values():
+    row = {
+        "Deal ID": "D-200",
+        "Account": "Demo Account",
+        "Amount": 90000,
+        "Sales Stage": "Proposal",
+        "Status": "Open",
+        "Expected Close": "2026-10-30",
     }
 
-    result = analyze_deal(record)
+    result = normalize_record(row)
 
-    assert result["risk_level"] in {"HIGH", "MEDIUM"}
-    assert result["risk_score"] >= 60
-    assert any("activity" in reason.lower() or "close date" in reason.lower() for reason in result["risk_reasons"])
-    assert result["recommended_action"]
-
-
-def test_low_risk_deal_has_balanced_signals():
-    record = {
-        "deal_id": "D-101",
-        "account_name": "Healthy Account",
-        "deal_value": 220000,
-        "stage": "Qualified",
-        "status": "open",
-        "created_date": "2026-08-01",
-        "expected_close_date": "2026-11-15",
-        "last_activity_date": "2026-10-16",
-        "activity_count": 8,
-        "meeting_count": 3,
-        "email_count": 8,
-        "stakeholder_count": 5,
-    }
-
-    result = analyze_deal(record)
-
-    assert result["risk_level"] in {"LOW", "MEDIUM"}
-    assert result["risk_score"] < 70
+    assert result["deal_id"] == "D-200"
+    assert result["account_name"] == "Demo Account"
+    assert result["deal_value"] == 90000.0
+    assert result["stage"] == "Proposal"
+    assert result["status"] == "Open" or result["status"] == "open"
+    assert result["expected_close_date"] is not None

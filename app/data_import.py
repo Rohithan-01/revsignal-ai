@@ -1,32 +1,118 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from app.risk_engine import analyze_deal
+
+REQUIRED_FIELDS = {"deal_id", "account_name", "deal_value", "stage", "status"}
+FIELD_ALIASES = {
+    "deal_id": ["deal_id", "dealid", "opportunity_id", "id", "deal"],
+    "account_name": ["account_name", "account", "company", "customer_name", "customer"],
+    "deal_value": ["deal_value", "amount", "value", "revenue", "opportunity_value"],
+    "stage": ["stage", "sales_stage", "deal_stage", "pipeline_stage"],
+    "created_date": ["created_date", "created_at", "created", "date_created"],
+    "expected_close_date": ["expected_close_date", "close_date", "expected_close", "close_date_expected"],
+    "last_activity_date": ["last_activity_date", "last_activity", "last_touch", "last_contact_date"],
+    "activity_count": ["activity_count", "activities", "total_activity_count"],
+    "meeting_count": ["meeting_count", "meetings", "meeting_total"],
+    "email_count": ["email_count", "emails", "email_total"],
+    "stakeholder_count": ["stakeholder_count", "stakeholders", "decision_makers"],
+    "status": ["status", "deal_status", "opportunity_status"],
+}
 
 
-def generate_recommendation(
-    risk_level: str,
-    days_since_activity: int | None,
-    expected_close_date: datetime | None,
-    stakeholder_count: int | None,
-    stage: str,
-    reason_count: int,
-) -> str:
-    if expected_close_date is not None and expected_close_date < datetime.now():
-        return "Review the close date, confirm customer commitment, and escalate the account if the renewal decision is still pending."
+def _normalize_key(key: Any) -> str:
+    return str(key).strip().lower().replace(" ", "_")
 
-    if days_since_activity is not None and days_since_activity > 30:
-        return "Schedule a customer follow-up within 48 hours and confirm the buying timeline, next milestones, and open questions."
 
-    if stakeholder_count is not None and stakeholder_count < 2:
-        return "Identify missing decision-makers and validate the buying committee before the next customer conversation."
+def _coerce_numeric(value: Any) -> float | None:
+    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
-    if stage.lower() in {"proposal", "negotiation"} and reason_count >= 3:
-        return "Reassess the opportunity plan, address the blockers, and clarify the expected decision path with the customer."
 
-    if risk_level == "HIGH":
-        return "Run a focused deal review with the account team and document the immediate actions needed to reduce risk."
+def _coerce_date(value: Any) -> datetime | None:
+    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+        return None
+    try:
+        return pd.to_datetime(value).to_pydatetime()
+    except Exception:
+        return None
 
-    if risk_level == "MEDIUM":
-        return "Stay engaged with the customer, confirm the next milestone, and monitor the deal closely over the next two weeks."
 
-    return "Maintain the current outreach cadence and validate the next customer milestone to keep momentum."
+def normalize_record(raw_record: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    alias_lookup = {canonical: {alias.lower() for alias in aliases} for canonical, aliases in FIELD_ALIASES.items()}
+
+    for raw_key, raw_value in raw_record.items():
+        normalized_key = _normalize_key(raw_key)
+        for canonical, aliases in alias_lookup.items():
+            if normalized_key in aliases:
+                normalized[canonical] = raw_value
+                break
+
+    if "status" not in normalized or not str(normalized.get("status") or "").strip():
+        normalized["status"] = "open"
+    if "deal_id" not in normalized or not str(normalized.get("deal_id") or "").strip():
+        raise ValueError("The CSV is missing a valid deal_id column or value.")
+    if "account_name" not in normalized or not str(normalized.get("account_name") or "").strip():
+        raise ValueError("The CSV is missing a valid account_name column or value.")
+    if "deal_value" not in normalized:
+        normalized["deal_value"] = 0
+    if "stage" not in normalized or not str(normalized.get("stage") or "").strip():
+        normalized["stage"] = "Unknown"
+
+    normalized["deal_value"] = _coerce_numeric(normalized.get("deal_value")) or 0
+    normalized["created_date"] = _coerce_date(normalized.get("created_date"))
+    normalized["expected_close_date"] = _coerce_date(normalized.get("expected_close_date"))
+    normalized["last_activity_date"] = _coerce_date(normalized.get("last_activity_date"))
+
+    for key in ("activity_count", "meeting_count", "email_count", "stakeholder_count"):
+        value = _coerce_numeric(normalized.get(key))
+        normalized[key] = int(value) if value is not None else None
+
+    return normalized
+
+
+def import_csv_records(file_obj: Any) -> list[dict[str, Any]]:
+    uploaded = file_obj.read()
+    if not uploaded:
+        raise ValueError("The uploaded CSV file is empty.")
+
+    temp_path = Path("/tmp/revsignal_upload.csv")
+    temp_path.write_bytes(uploaded)
+
+    try:
+        frame = pd.read_csv(temp_path)
+    except Exception as exc:
+        raise ValueError(f"Unable to parse the uploaded file as CSV: {exc}") from exc
+
+    if frame.empty:
+        raise ValueError("The uploaded CSV file does not contain any rows.")
+
+    rows = [normalize_record(row) for row in frame.to_dict(orient="records")]
+    if not rows:
+        raise ValueError("No records were loaded from the uploaded CSV file.")
+
+    present_fields = set().union(*(row.keys() for row in rows))
+    missing_fields = sorted(REQUIRED_FIELDS - present_fields)
+    if missing_fields:
+        raise ValueError(
+            "The uploaded CSV is missing required fields for the RevSignal schema. "
+            f"Missing: {', '.join(missing_fields)}"
+        )
+
+    return [analyze_deal(row) for row in rows]
+
+
+def synthetic_sample_rows() -> list[dict[str, Any]]:
+    sample_file = Path(__file__).resolve().parent.parent / "data" / "sample_crm.csv"
+    frame = pd.read_csv(sample_file)
+    return [normalize_record(row) for row in frame.to_dict(orient="records")]
