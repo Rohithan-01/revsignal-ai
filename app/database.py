@@ -1,18 +1,24 @@
 import os
+from pathlib import Path
 
-from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./revsignal.db")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL.startswith("sqlite") and not DATABASE_URL.startswith("sqlite:///"):
+    DATABASE_URL = f"sqlite:///{BASE_DIR / DATABASE_URL.replace('sqlite:///', '')}"
 
-engine = create_async_engine(
+if DATABASE_URL.startswith("sqlite:///."):
+    DATABASE_URL = f"sqlite:///{(BASE_DIR / DATABASE_URL.replace('sqlite:///', '', 1)).resolve()}"
+
+engine = create_engine(
     DATABASE_URL,
-    echo=True
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
 )
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-SessionLocal = async_sessionmaker(
-    engine,
-    expire_on_commit=False
-)
+
+class Base(DeclarativeBase):
+    pass

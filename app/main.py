@@ -1,225 +1,139 @@
-from fastapi import FastAPI
-from sqlalchemy import text
-from app.models import Base
-from app.database import engine
-from datetime import datetime, timedelta
+from __future__ import annotations
 
-from app.database import SessionLocal
-from app.models import Deal, Activity
-from sqlalchemy import select
-from typing import List
-from app.risk_engine import calculate_risk, is_deal_overdue
-from app.recommendation_engine import generate_recommendation
-from app.activity_engine import (
-    calculate_activity_signal,
-    get_activity_status,
-)
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from app.schemas import (
-    DealResponse,
-    DealCreate,
-    ActivityCreate,
-    ActivityResponse,
-)
+import pandas as pd
 
-app = FastAPI(title="RevSignal API")
+from app.risk_engine import analyze_deal
+
+REQUIRED_FIELDS = {
+    "deal_id",
+    "account_name",
+    "deal_value",
+    "stage",
+    "status",
+}
+
+FIELD_ALIASES = {
+    "deal_id": ["deal_id", "dealid", "opportunity_id", "id", "deal", "deal id"],
+    "account_name": ["account_name", "account", "account_name", "company", "customer_name", "customer"],
+    "deal_value": ["deal_value", "amount", "value", "revenue", "opportunity_value"],
+    "stage": ["stage", "sales_stage", "deal_stage", "pipeline_stage"],
+    "created_date": ["created_date", "created_at", "created", "date_created"],
+    "expected_close_date": ["expected_close_date", "close_date", "expected_close", "close_date_expected"],
+    "last_activity_date": ["last_activity_date", "last_activity", "last_touch", "last_contact_date"],
+    "activity_count": ["activity_count", "activities", "total_activity_count"],
+    "meeting_count": ["meeting_count", "meetings", "meeting_total"],
+    "email_count": ["email_count", "emails", "email_total"],
+    "stakeholder_count": ["stakeholder_count", "stakeholders", "decision_makers"],
+    "status": ["status", "deal_status", "opportunity_status"],
+}
 
 
-@app.get("/")
-async def root():
-    return {"message": "RevSignal API is running"}
+def _normalize_key(key: Any) -> str:
+    return str(key).strip().lower().replace(" ", "_")
 
 
-@app.get("/health/db")
-async def database_health():
-    async with engine.connect() as connection:
-        result = await connection.execute(text("SELECT 1"))
-        return {
-            "database": "connected",
-            "result": result.scalar()
-        }
+def _coerce_numeric(value: Any) -> float | None:
+    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
-@app.on_event("startup")
-async def create_tables():
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
 
-@app.post("/seed/deals")
-async def seed_deals():
-    async with SessionLocal() as session:
-        deals = [
-            Deal(
-                company="Acme Corp",
-                deal_value=50000,
-                stage="Negotiation",
-                probability=70,
-                expected_close_date=datetime.now() + timedelta(days=15),
-            ),
-            Deal(
-                company="TechNova",
-                deal_value=25000,
-                stage="Proposal",
-                probability=40,
-                expected_close_date=datetime.now() + timedelta(days=30),
-            ),
-            Deal(
-                company="DataFlow",
-                deal_value=80000,
-                stage="Qualified",
-                probability=60,
-                expected_close_date=datetime.now() + timedelta(days=45),
-            ),
-            Deal(
-                company="CloudPeak",
-                deal_value=120000,
-                stage="Negotiation",
-                probability=80,
-                expected_close_date=datetime.now() + timedelta(days=10),
-            ),
-            Deal(
-                company="NextGen Solutions",
-                deal_value=35000,
-                stage="Discovery",
-                probability=25,
-                expected_close_date=datetime.now() + timedelta(days=60),
-            ),
-        ]
+def _coerce_date(value: Any) -> datetime | None:
+    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+        return None
+    try:
+        return pd.to_datetime(value).to_pydatetime()
+    except Exception:
+        return None
 
-        session.add_all(deals)
-        await session.commit()
 
-        return {
-            "message": "Dummy deals created",
-            "count": len(deals)
-        }
-@app.get("/deals", response_model=List[DealResponse])
-async def get_deals():
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(Deal)
-        )
-        deals = result.scalars().all()
+def normalize_record(raw_record: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for canonical, aliases in FIELD_ALIASES.items():
+        for raw_key, raw_value in raw_record.items():
+            normalized_key = _normalize_key(raw_key)
+            if normalized_key in {alias.lower() for alias in aliases}:
+                normalized[canonical] = raw_value
+                break
 
-        response = []
+    if "status" not in normalized or not str(normalized.get("status") or "").strip():
+        normalized["status"] = "open"
 
-    for deal in deals:
-        risk_level = calculate_risk(deal.probability)
-        is_overdue = is_deal_overdue(deal.expected_close_date)
-        recommendation = generate_recommendation(
-            risk_level,
-            is_overdue
-        )
+    if "deal_id" not in normalized or not str(normalized.get("deal_id") or "").strip():
+        raise ValueError("The CSV is missing a valid deal_id column or value.")
 
-        response.append({
-        "id": deal.id,
-        "company": deal.company,
-        "deal_value": deal.deal_value,
-        "stage": deal.stage,
-        "probability": deal.probability,
-        "risk_level": risk_level,
-        "is_overdue": is_overdue,
-        "recommendation": recommendation,
-        "expected_close_date": deal.expected_close_date,
-        "created_at": deal.created_at,
-        })
+    if "account_name" not in normalized or not str(normalized.get("account_name") or "").strip():
+        raise ValueError("The CSV is missing a valid account_name column or value.")
 
-        return response
+    if "deal_value" not in normalized:
+        normalized["deal_value"] = 0
+    if "stage" not in normalized or not str(normalized.get("stage") or "").strip():
+        normalized["stage"] = "Unknown"
 
-@app.post("/deals", response_model=DealResponse)
-async def create_deal(deal: DealCreate):
-    new_deal = Deal(
-        company=deal.company,
-        deal_value=deal.deal_value,
-        stage=deal.stage,
-        probability=deal.probability,
-        expected_close_date=deal.expected_close_date,
-    )
+    normalized["deal_value"] = _coerce_numeric(normalized.get("deal_value")) or 0
+    normalized["created_date"] = _coerce_date(normalized.get("created_date"))
+    normalized["expected_close_date"] = _coerce_date(normalized.get("expected_close_date"))
+    normalized["last_activity_date"] = _coerce_date(normalized.get("last_activity_date"))
+    normalized["activity_count"] = _coerce_numeric(normalized.get("activity_count"))
+    normalized["meeting_count"] = _coerce_numeric(normalized.get("meeting_count"))
+    normalized["email_count"] = _coerce_numeric(normalized.get("email_count"))
+    normalized["stakeholder_count"] = _coerce_numeric(normalized.get("stakeholder_count"))
 
-    async with SessionLocal() as session:
-        session.add(new_deal)
-        await session.commit()
-        await session.refresh(new_deal)
+    if normalized["activity_count"] is not None:
+        normalized["activity_count"] = int(normalized["activity_count"])
+    if normalized["meeting_count"] is not None:
+        normalized["meeting_count"] = int(normalized["meeting_count"])
+    if normalized["email_count"] is not None:
+        normalized["email_count"] = int(normalized["email_count"])
+    if normalized["stakeholder_count"] is not None:
+        normalized["stakeholder_count"] = int(normalized["stakeholder_count"])
 
-    risk_level = calculate_risk(new_deal.probability)
-    is_overdue = is_deal_overdue(new_deal.expected_close_date)
-    recommendation = generate_recommendation(
-         risk_level,
-         is_overdue
-    )
+    return normalized
 
-    return {
-    "id": new_deal.id,
-    "company": new_deal.company,
-    "deal_value": new_deal.deal_value,
-    "stage": new_deal.stage,
-    "probability": new_deal.probability,
-    "risk_level": risk_level,
-    "is_overdue": is_overdue,
-    "recommendation": recommendation,
-    "expected_close_date": new_deal.expected_close_date,
-    "created_at": new_deal.created_at,
-    }
 
-@app.post("/activities", response_model=ActivityResponse)
-async def create_activity(activity: ActivityCreate):
-    new_activity = Activity(
-        deal_id=activity.deal_id,
-        activity_type=activity.activity_type,
-        activity_date=activity.activity_date,
-        notes=activity.notes,
-    )
+def import_csv_records(file_obj: Any) -> list[dict[str, Any]]:
+    uploaded = file_obj.read()
+    if not uploaded:
+        raise ValueError("The uploaded CSV file is empty.")
 
-    async with SessionLocal() as session:
-        session.add(new_activity)
-        await session.commit()
-        await session.refresh(new_activity)
+    csv_path = Path("/tmp/revsignal_upload.csv")
+    csv_path.write_bytes(uploaded)
 
-        return new_activity
+    try:
+        frame = pd.read_csv(csv_path)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise ValueError(f"Unable to parse the file as CSV: {exc}") from exc
 
-@app.get("/activities", response_model=list[ActivityResponse])
-async def get_activities():
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(Activity)
-        )
-        activities = result.scalars().all()
+    if frame.empty:
+        raise ValueError("The uploaded CSV file does not contain any rows.")
 
-        return activities
+    rows: list[dict[str, Any]] = []
+    for _, row in frame.iterrows():
+        record = normalize_record(row.to_dict())
+        rows.append(record)
 
-@app.get("/deals/{deal_id}/activities", response_model=list[ActivityResponse])
-async def get_deal_activities(deal_id: int):
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(Activity).where(Activity.deal_id == deal_id)
-        )
-        activities = result.scalars().all()
+    if not rows:
+        raise ValueError("No records were loaded from the uploaded CSV file.")
 
-        return activities
-
-@app.get("/deals/{deal_id}/activity-signal")
-async def get_activity_signal(deal_id: int):
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(Activity).where(Activity.deal_id == deal_id)
+    missing_fields = sorted(REQUIRED_FIELDS - set().union(*(row.keys() for row in rows)))
+    if missing_fields:
+        raise ValueError(
+            "The uploaded CSV is missing required fields for the RevSignal schema. "
+            f"Missing: {', '.join(missing_fields)}"
         )
 
-        activities = result.scalars().all()
+    return [analyze_deal(row) for row in rows]
 
-        activity_dates = [
-            activity.activity_date
-            for activity in activities
-        ]
 
-        days_since_last_activity = calculate_activity_signal(
-            activity_dates
-        )
-
-        activity_status = get_activity_status(
-           days_since_last_activity
-          )
-
-        return {
-          "deal_id": deal_id,
-          "days_since_last_activity": days_since_last_activity,
-          "activity_status": activity_status,
-        }
+def synthetic_sample_rows() -> list[dict[str, Any]]:
+    csv_path = Path(__file__).resolve().parent.parent / "data" / "sample_crm.csv"
+    frame = pd.read_csv(csv_path)
+    return [normalize_record(row.to_dict()) for _, row in frame.iterrows()]

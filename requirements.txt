@@ -1,5 +1,6 @@
-fastapi
-uvicorn
-sqlalchemy
-asyncpg
-python-dotenv
+fastapi>=0.115.0
+uvicorn>=0.30.0
+sqlalchemy>=2.0.0
+pandas>=2.2.0
+python-multipart>=0.0.9
+pytest>=8.3.0
