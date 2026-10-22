@@ -72,6 +72,10 @@ Then open:
 
 The app creates `revsignal.db` in the repository root by default. To use a different database location, set `DATABASE_URL` in the process environment before starting the app. No external services are required.
 
+## Deployment
+
+For instructions to deploy the FastAPI API to Render and the Next.js frontend to Vercel, see [docs/deployment.md](docs/deployment.md). GitHub hosts the source code; it does not run the application.
+
 ## Frontend
 
 The responsive Next.js dashboard runs separately from the FastAPI service. Start the backend on port 8000, then in another terminal:
