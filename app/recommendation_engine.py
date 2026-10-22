@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 
 def generate_recommendation(
     risk_level: str,
-    days_since_activity: int | None,
-    expected_close_date: datetime | None,
-    stakeholder_count: int | None,
+    days_since_activity: Optional[int],
+    expected_close_date: Optional[datetime],
+    stakeholder_count: Optional[int],
     stage: str,
     reason_count: int,
 ) -> str:

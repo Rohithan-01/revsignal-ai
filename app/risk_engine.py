@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from app.recommendation_engine import generate_recommendation
 
 
-def _coerce_date(value: Any) -> datetime | None:
+def _coerce_date(value: Any) -> Optional[datetime]:
     if value in (None, "", "nan", "NaN"):
         return None
     if isinstance(value, datetime):

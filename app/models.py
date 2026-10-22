@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -17,13 +18,13 @@ class Deal(Base):
     deal_value: Mapped[float] = mapped_column(Float, default=0.0)
     stage: Mapped[str] = mapped_column(String(100), default="Unknown")
     status: Mapped[str] = mapped_column(String(50), default="open")
-    created_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    expected_close_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_activity_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    activity_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    meeting_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    email_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    stakeholder_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expected_close_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_activity_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    activity_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    meeting_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    email_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stakeholder_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     risk_score: Mapped[int] = mapped_column(Integer, default=0)
     risk_level: Mapped[str] = mapped_column(String(20), default="LOW")
     risk_reasons: Mapped[str] = mapped_column(Text, default="[]")

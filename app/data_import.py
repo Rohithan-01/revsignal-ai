@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
-from typing import Any
+from io import BytesIO
+import math
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -23,14 +24,23 @@ FIELD_ALIASES = {
     "stakeholder_count": ["stakeholder_count", "stakeholders", "decision_makers"],
     "status": ["status", "deal_status", "opportunity_status"],
 }
+FIELD_ALIAS_LOOKUP = {
+    alias.lower(): canonical
+    for canonical, aliases in FIELD_ALIASES.items()
+    for alias in aliases
+}
 
 
 def _normalize_key(key: Any) -> str:
     return str(key).strip().lower().replace(" ", "_")
 
 
-def _coerce_numeric(value: Any) -> float | None:
-    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip()) or bool(pd.isna(value))
+
+
+def _coerce_numeric(value: Any) -> Optional[float]:
+    if _is_blank(value):
         return None
     try:
         return float(value)
@@ -38,8 +48,8 @@ def _coerce_numeric(value: Any) -> float | None:
         return None
 
 
-def _coerce_date(value: Any) -> datetime | None:
-    if value is None or str(value).strip() in {"", "nan", "NaN"}:
+def _coerce_date(value: Any) -> Optional[datetime]:
+    if _is_blank(value):
         return None
     try:
         return pd.to_datetime(value).to_pydatetime()
@@ -49,27 +59,30 @@ def _coerce_date(value: Any) -> datetime | None:
 
 def normalize_record(raw_record: dict[str, Any]) -> dict[str, Any]:
     normalized: dict[str, Any] = {}
-    alias_lookup = {canonical: {alias.lower() for alias in aliases} for canonical, aliases in FIELD_ALIASES.items()}
 
     for raw_key, raw_value in raw_record.items():
-        normalized_key = _normalize_key(raw_key)
-        for canonical, aliases in alias_lookup.items():
-            if normalized_key in aliases:
-                normalized[canonical] = raw_value
-                break
+        canonical = FIELD_ALIAS_LOOKUP.get(_normalize_key(raw_key))
+        if canonical is not None:
+            normalized[canonical] = raw_value
 
-    if "status" not in normalized or not str(normalized.get("status") or "").strip():
+    if "status" not in normalized or _is_blank(normalized["status"]):
         normalized["status"] = "open"
-    if "deal_id" not in normalized or not str(normalized.get("deal_id") or "").strip():
+    if "deal_id" not in normalized or _is_blank(normalized["deal_id"]):
         raise ValueError("The CSV is missing a valid deal_id column or value.")
-    if "account_name" not in normalized or not str(normalized.get("account_name") or "").strip():
+    if "account_name" not in normalized or _is_blank(normalized["account_name"]):
         raise ValueError("The CSV is missing a valid account_name column or value.")
     if "deal_value" not in normalized:
         normalized["deal_value"] = 0
-    if "stage" not in normalized or not str(normalized.get("stage") or "").strip():
+    if "stage" not in normalized or _is_blank(normalized["stage"]):
         normalized["stage"] = "Unknown"
 
-    normalized["deal_value"] = _coerce_numeric(normalized.get("deal_value")) or 0
+    if "deal_value" in normalized:
+        deal_value = _coerce_numeric(normalized["deal_value"])
+        if deal_value is None or not math.isfinite(deal_value) or deal_value < 0:
+            raise ValueError("deal_value must be a non-negative number.")
+        normalized["deal_value"] = deal_value
+    else:
+        normalized["deal_value"] = 0
     normalized["created_date"] = _coerce_date(normalized.get("created_date"))
     normalized["expected_close_date"] = _coerce_date(normalized.get("expected_close_date"))
     normalized["last_activity_date"] = _coerce_date(normalized.get("last_activity_date"))
@@ -86,28 +99,39 @@ def import_csv_records(file_obj: Any) -> list[dict[str, Any]]:
     if not uploaded:
         raise ValueError("The uploaded CSV file is empty.")
 
-    temp_path = Path("/tmp/revsignal_upload.csv")
-    temp_path.write_bytes(uploaded)
-
     try:
-        frame = pd.read_csv(temp_path)
+        frame = pd.read_csv(BytesIO(uploaded))
     except Exception as exc:
         raise ValueError(f"Unable to parse the uploaded file as CSV: {exc}") from exc
 
     if frame.empty:
         raise ValueError("The uploaded CSV file does not contain any rows.")
 
-    rows = [normalize_record(row) for row in frame.to_dict(orient="records")]
-    if not rows:
-        raise ValueError("No records were loaded from the uploaded CSV file.")
-
-    present_fields = set().union(*(row.keys() for row in rows))
+    present_fields = {
+        FIELD_ALIAS_LOOKUP.get(_normalize_key(column))
+        for column in frame.columns
+    }
     missing_fields = sorted(REQUIRED_FIELDS - present_fields)
     if missing_fields:
         raise ValueError(
             "The uploaded CSV is missing required fields for the RevSignal schema. "
             f"Missing: {', '.join(missing_fields)}"
         )
+
+    rows = []
+    seen_deal_ids: set[str] = set()
+    for row_number, raw_row in enumerate(frame.to_dict(orient="records"), start=2):
+        try:
+            row = normalize_record(raw_row)
+        except ValueError as exc:
+            raise ValueError(f"Invalid CSV row {row_number}: {exc}") from exc
+        deal_id = str(row["deal_id"]).strip()
+        if deal_id in seen_deal_ids:
+            raise ValueError(f"Duplicate deal_id {deal_id!r} on CSV row {row_number}.")
+        seen_deal_ids.add(deal_id)
+        rows.append(row)
+    if not rows:
+        raise ValueError("No records were loaded from the uploaded CSV file.")
 
     return [analyze_deal(row) for row in rows]
 

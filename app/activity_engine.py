@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 
 def calculate_days_since_last_activity(
-    activity_date: datetime | None,
-) -> int | None:
+    activity_date: Optional[datetime],
+) -> Optional[int]:
 
     if activity_date is None:
         return None
@@ -17,7 +18,7 @@ def calculate_days_since_last_activity(
 
 def get_latest_activity_date(
     activity_dates: list[datetime],
-) -> datetime | None:
+) -> Optional[datetime]:
 
     if not activity_dates:
         return None
@@ -26,7 +27,7 @@ def get_latest_activity_date(
 
 def calculate_activity_signal(
     activity_dates: list[datetime],
-) -> int | None:
+) -> Optional[int]:
 
     latest_activity_date = get_latest_activity_date(activity_dates)
 
@@ -35,7 +36,7 @@ def calculate_activity_signal(
     )
 
 def get_activity_status(
-    days_since_last_activity: int | None,
+    days_since_last_activity: Optional[int],
 ) -> str:
 
     if days_since_last_activity is None:

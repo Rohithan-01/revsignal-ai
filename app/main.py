@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -14,6 +17,20 @@ from app.risk_engine import analyze_deal
 from app.schemas import DealRead, MetricsResponse, UploadResponse
 
 app = FastAPI(title="RevSignal", version="0.1.0")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 BASE_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -121,7 +138,11 @@ def upload_deals(file: UploadFile = File(...)) -> UploadResponse:
 
 
 @app.get("/api/deals", response_model=list[DealRead])
-def list_deals(status: str | None = None, risk_level: str | None = None, stage: str | None = None):
+def list_deals(
+    status: Optional[str] = None,
+    risk_level: Optional[str] = None,
+    stage: Optional[str] = None,
+):
     with SessionLocal() as db:
         query = db.query(Deal)
         if status:
@@ -134,6 +155,18 @@ def list_deals(status: str | None = None, risk_level: str | None = None, stage: 
         return [_deal_to_response(deal) for deal in deals]
 
 
+@app.get("/api/deals/high-risk", response_model=list[DealRead])
+def list_high_risk_deals() -> list[DealRead]:
+    with SessionLocal() as db:
+        deals = (
+            db.query(Deal)
+            .filter(Deal.status == "open", Deal.risk_level == "HIGH")
+            .order_by(Deal.risk_score.desc())
+            .all()
+        )
+        return [_deal_to_response(deal) for deal in deals]
+
+
 @app.get("/api/deals/{deal_id}", response_model=DealRead)
 def get_deal(deal_id: str):
     with SessionLocal() as db:
@@ -141,13 +174,6 @@ def get_deal(deal_id: str):
         if deal is None:
             raise HTTPException(status_code=404, detail=f"Deal {deal_id} was not found.")
         return _deal_to_response(deal)
-
-
-@app.get("/api/deals/high-risk", response_model=list[DealRead])
-def list_high_risk_deals() -> list[DealRead]:
-    with SessionLocal() as db:
-        deals = db.query(Deal).filter(Deal.risk_level == "HIGH").order_by(Deal.risk_score.desc()).all()
-        return [_deal_to_response(deal) for deal in deals]
 
 
 @app.get("/api/metrics", response_model=MetricsResponse)

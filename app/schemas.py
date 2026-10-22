@@ -1,24 +1,25 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class DealRead(BaseModel):
-    id: int | None = None
+    id: Optional[int] = None
     deal_id: str
     account_name: str
     deal_value: float
     stage: str
     status: str
-    created_date: datetime | None = None
-    expected_close_date: datetime | None = None
-    last_activity_date: datetime | None = None
-    activity_count: int | None = None
-    meeting_count: int | None = None
-    email_count: int | None = None
-    stakeholder_count: int | None = None
+    created_date: Optional[datetime] = None
+    expected_close_date: Optional[datetime] = None
+    last_activity_date: Optional[datetime] = None
+    activity_count: Optional[int] = None
+    meeting_count: Optional[int] = None
+    email_count: Optional[int] = None
+    stakeholder_count: Optional[int] = None
     risk_score: int = 0
     risk_level: str = "LOW"
     risk_reasons: list[str] = Field(default_factory=list)
