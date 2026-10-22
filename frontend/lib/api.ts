@@ -1,8 +1,12 @@
 import type { Deal, Metrics, UploadResponse } from "@/lib/types";
 
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
-).replace(/\/+$/, "");
+const API_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000").replace(
+        /\/+$/,
+        "",
+      )
+    : "";
 
 export class ApiConnectionError extends Error {
   constructor(message: string) {
@@ -64,7 +68,10 @@ async function request<T>(
 }
 
 export const api = {
-  health: () => request<{ status: string; service: string }>("/health"),
+  health: () =>
+    request<{ status: string; service: string }>(
+      API_BASE_URL ? "/health" : "/api/health",
+    ),
   deals: () => request<Deal[]>("/api/deals"),
   metrics: () => request<Metrics>("/api/metrics"),
   deal: (dealId: string) => request<Deal>(`/api/deals/${encodeURIComponent(dealId)}`),

@@ -74,7 +74,7 @@ The app creates `revsignal.db` in the repository root by default. To use a diffe
 
 ## Deployment
 
-For instructions to deploy the FastAPI API to Render and the Next.js frontend to Vercel, see [docs/deployment.md](docs/deployment.md). GitHub hosts the source code; it does not run the application.
+For instructions to deploy the Next.js frontend and FastAPI backend together as a Vercel multi-service project, see [docs/deployment.md](docs/deployment.md). GitHub hosts the source code; it does not run the application.
 
 ## Frontend
 

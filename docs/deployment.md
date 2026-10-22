@@ -1,48 +1,39 @@
-# Deploy RevSignal
+# Deploy RevSignal on Vercel
 
-RevSignal has a FastAPI backend and a separate Next.js frontend. Deploy the
-backend to Render and the frontend to Vercel; GitHub stores the source code but
-does not run either service.
+RevSignal is configured as one Vercel project with two services:
 
-## Deploy the API to Render
+- `frontend` serves the Next.js website and is the public entry point.
+- `revsignal-api` runs the FastAPI backend and remains internal.
 
-1. Sign in to Render and create a Blueprint from the
-   `Rohithan-01/revsignal-ai` GitHub repository.
-2. Select the `main` branch and approve the `render.yaml` configuration.
-3. After the service deploys, copy its public URL, for example
-   `https://revsignal-api.onrender.com`.
-4. Open `<API URL>/health`. The response should contain `"status":"ok"`.
+The root [`vercel.json`](../vercel.json) configures both services. All public
+requests route to the frontend. The frontend's `/api/*` route handler forwards
+API calls to the internal backend using the `REVSIGNAL_API_URL` service
+binding; `/api/health` is forwarded to the backend's `/health` endpoint.
 
-The free Render service can spin down while idle. Its SQLite database is not
-persistent, so data uploaded to the API can be lost when the service restarts or
-is redeployed. Use persistent storage and configure `DATABASE_URL` before
-relying on the deployment to retain CRM data.
+## Deploy
 
-## Deploy the frontend to Vercel
+1. Import `Rohithan-01/revsignal-ai` into Vercel.
+2. Set the project root directory to the repository root, not `frontend`.
+   Vercel reads the root `vercel.json` to build both services.
+3. Deploy the `main` branch. Do not set `REVSIGNAL_API_URL` yourself; Vercel
+   injects it from the frontend service binding.
+4. Open the deployment URL and check that the dashboard loads. The frontend
+   uses labelled demo data if the API cannot be reached.
 
-1. Import the same GitHub repository into Vercel.
-2. Set the project **Root Directory** to `frontend`.
-3. Add the environment variable
-   `NEXT_PUBLIC_API_BASE_URL` with the public Render API URL (without a trailing
-   slash), for example `https://revsignal-api.onrender.com`.
-4. Deploy and copy the public Vercel site URL.
+For local development, run the FastAPI backend on port 8000, then start the
+frontend from `frontend` with `npm run dev`. The frontend defaults to
+`http://localhost:8000` in development. The Vercel service binding is only
+available at runtime in deployed frontend functions.
 
-## Connect the frontend to the API
+## Database persistence
 
-In the Render service's environment settings, set `CORS_ORIGINS` to include
-the exact Vercel site origin, for example:
+The backend defaults to SQLite. A serverless deployment's local filesystem is
+not a durable database, so uploaded CRM data may not persist across deployments
+or runtime instances. Configure a managed database and set `DATABASE_URL` on
+the `revsignal-api` service before relying on persistent data.
 
-```text
-https://revsignal-ai.vercel.app
-```
+## Separate Render deployment
 
-To allow both the production site and local development, use a comma-separated
-list:
-
-```text
-https://revsignal-ai.vercel.app,http://localhost:3000,http://127.0.0.1:3000
-```
-
-Save the setting and redeploy the Render service. The frontend can then send
-API requests to the backend. Vercel preview URLs are separate origins; add a
-preview origin to `CORS_ORIGINS` if you need to test a preview deployment.
+The repository also includes `render.yaml` for deploying the API separately
+to Render. That is an alternative to the internal Vercel API service; it is
+not required for the Vercel multi-service deployment.
