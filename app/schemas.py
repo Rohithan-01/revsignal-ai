@@ -10,7 +10,11 @@ class DealResponse(BaseModel):
     stage: str
     probability: float
     risk_level: str
+    overall_risk_level: str
+    risk_reasons: list[str]
     is_overdue: bool
+    activity_status: str
+    days_since_last_activity: int | None
     recommendation: str
     expected_close_date: datetime | None
     created_at: datetime
@@ -39,3 +43,8 @@ class ActivityResponse(BaseModel):
     notes: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DealDetailResponse(DealResponse):
+    latest_activity_date: datetime | None
+    activities: list[ActivityResponse]
