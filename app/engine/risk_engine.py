@@ -1,4 +1,7 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
+DEMO_BUSINESS_TIMEZONE = "Asia/Kolkata"
 
 
 def calculate_risk(probability: float) -> str:
@@ -10,14 +13,25 @@ def calculate_risk(probability: float) -> str:
         return "LOW"
 
 
-def is_deal_overdue(expected_close_date: datetime | None) -> bool:
+def is_deal_overdue(
+    expected_close_date: date | None,
+    business_timezone: str = DEMO_BUSINESS_TIMEZONE,
+    now: datetime | None = None,
+) -> bool:
     if expected_close_date is None:
         return False
 
-    if expected_close_date.tzinfo is None:
-        expected_close_date = expected_close_date.replace(tzinfo=timezone.utc)
+    if isinstance(expected_close_date, datetime):
+        raise ValueError("expected_close_date must be a date, not a datetime")
 
-    return expected_close_date < datetime.now(timezone.utc)
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None or current_time.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+
+    local_today = current_time.astimezone(
+        ZoneInfo(business_timezone)
+    ).date()
+    return expected_close_date < local_today
 
 
 def calculate_overall_risk(

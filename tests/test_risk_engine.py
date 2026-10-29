@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from app.engine.risk_engine import (
     calculate_overall_risk,
@@ -92,10 +92,55 @@ class CalculateOverallRiskTests(unittest.TestCase):
         self.assertEqual(calculate_risk(50), "MEDIUM")
         self.assertEqual(calculate_risk(50.01), "LOW")
 
-    def test_overdue_handles_aware_and_naive_dates(self):
-        past = datetime.now(timezone.utc) - timedelta(days=1)
-        self.assertTrue(is_deal_overdue(past))
-        self.assertTrue(is_deal_overdue(past.replace(tzinfo=None)))
+    def test_close_date_is_not_overdue_until_business_day_ends(self):
+        close_date = date(2026, 11, 10)
+
+        before_end_of_close_date = datetime(
+            2026, 11, 10, 18, 29, 59, tzinfo=timezone.utc
+        )
+        start_of_next_local_date = datetime(
+            2026, 11, 10, 18, 30, tzinfo=timezone.utc
+        )
+
+        self.assertFalse(
+            is_deal_overdue(close_date, "Asia/Kolkata", before_end_of_close_date)
+        )
+        self.assertTrue(
+            is_deal_overdue(close_date, "Asia/Kolkata", start_of_next_local_date)
+        )
+
+    def test_overdue_uses_business_timezone_on_dst_transition(self):
+        close_date = date(2026, 3, 8)
+
+        before_end_of_close_date = datetime(
+            2026, 3, 9, 3, 59, tzinfo=timezone.utc
+        )
+        start_of_next_local_date = datetime(
+            2026, 3, 9, 4, 0, tzinfo=timezone.utc
+        )
+
+        self.assertFalse(
+            is_deal_overdue(
+                close_date,
+                "America/New_York",
+                before_end_of_close_date,
+            )
+        )
+        self.assertTrue(
+            is_deal_overdue(
+                close_date,
+                "America/New_York",
+                start_of_next_local_date,
+            )
+        )
+
+    def test_overdue_rejects_datetime_close_values_and_naive_now(self):
+        with self.assertRaises(ValueError):
+            is_deal_overdue(datetime(2026, 11, 10))
+        with self.assertRaises(ValueError):
+            is_deal_overdue(date(2026, 11, 10), now=datetime(2026, 11, 11))
+
+    def test_missing_close_date_is_not_overdue(self):
         self.assertFalse(is_deal_overdue(None))
 
 
