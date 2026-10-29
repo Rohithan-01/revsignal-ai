@@ -1,28 +1,30 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from typing import Any, Optional
+from typing import Any
+from zoneinfo import ZoneInfo
 
-from app.recommendation_engine import generate_recommendation
+from app.engine.crm_recommendation_engine import generate_crm_recommendation
+from app.engine.risk_engine import DEMO_BUSINESS_TIMEZONE
 
 
-def _coerce_date(value: Any) -> Optional[datetime]:
+def _coerce_date(value: Any) -> date | None:
     if value in (None, "", "nan", "NaN"):
         return None
     if isinstance(value, datetime):
-        return value
+        return value.date()
     if isinstance(value, date):
-        return datetime.combine(value, datetime.min.time())
+        return value
     if isinstance(value, str):
         cleaned = value.strip()
         if not cleaned:
             return None
         try:
-            return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+            return date.fromisoformat(cleaned)
         except ValueError:
             for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
                 try:
-                    return datetime.strptime(cleaned, fmt)
+                    return datetime.strptime(cleaned, fmt).date()
                 except ValueError:
                     continue
     return None
@@ -40,7 +42,9 @@ def _normalize_status(value: Any) -> str:
 
 
 def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    local_today = datetime.now(timezone.utc).astimezone(
+        ZoneInfo(DEMO_BUSINESS_TIMEZONE)
+    ).date()
     stage = str(record.get("stage") or "Unknown").strip() or "Unknown"
     status = _normalize_status(record.get("status"))
     deal_value = float(record.get("deal_value") or 0)
@@ -59,9 +63,7 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
         score += 20
         reasons.append("No recent customer activity was provided, so engagement is uncertain.")
     else:
-        if last_activity_date.tzinfo is None:
-            last_activity_date = last_activity_date.replace(tzinfo=timezone.utc)
-        days_since_activity = (now - last_activity_date).days
+        days_since_activity = max(0, (local_today - last_activity_date).days)
         if days_since_activity > 45:
             score += 35
             reasons.append(f"The last customer activity was {days_since_activity} days ago.")
@@ -70,10 +72,7 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
             reasons.append(f"Customer activity has slowed; it has been {days_since_activity} days since the last touchpoint.")
 
     if expected_close_date is not None:
-        close_dt = expected_close_date
-        if close_dt.tzinfo is None:
-            close_dt = close_dt.replace(tzinfo=timezone.utc)
-        days_to_close = (close_dt - now).days
+        days_to_close = (expected_close_date - local_today).days
         if days_to_close < 0:
             score += 25
             reasons.append("The expected close date is overdue.")
@@ -82,9 +81,7 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
             reasons.append("The expected close date is approaching within two weeks.")
 
     if created_date is not None:
-        if created_date.tzinfo is None:
-            created_date = created_date.replace(tzinfo=timezone.utc)
-        days_in_stage = (now - created_date).days
+        days_in_stage = max(0, (local_today - created_date).days)
         if stage.lower() in {"proposal", "negotiation", "qualified", "discovery"} and days_in_stage > 60:
             score += 15
             reasons.append(f"This opportunity has been in the {stage} stage for more than 60 days.")
@@ -129,9 +126,13 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
     else:
         risk_level = "HIGH"
 
-    recommended_action = generate_recommendation(
+    recommended_action = generate_crm_recommendation(
         risk_level=risk_level,
-        days_since_activity=(None if last_activity_date is None else (now - last_activity_date).days),
+        days_since_activity=(
+            None
+            if last_activity_date is None
+            else max(0, (local_today - last_activity_date).days)
+        ),
         expected_close_date=expected_close_date,
         stakeholder_count=stakeholder_count,
         stage=stage,

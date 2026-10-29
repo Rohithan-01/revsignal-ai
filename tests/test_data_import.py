@@ -1,8 +1,13 @@
+from datetime import date
 from io import BytesIO
 
 import pytest
 
-from app.data_import import import_csv_records, normalize_record
+from app.data_import import (
+    import_csv_records,
+    normalize_record,
+    synthetic_sample_rows,
+)
 
 
 def test_normalize_record_handles_aliases_and_missing_optional_values():
@@ -22,7 +27,7 @@ def test_normalize_record_handles_aliases_and_missing_optional_values():
     assert result["deal_value"] == 90000.0
     assert result["stage"] == "Proposal"
     assert result["status"] == "Open" or result["status"] == "open"
-    assert result["expected_close_date"] is not None
+    assert result["expected_close_date"] == date(2026, 10, 30)
 
 
 def test_import_csv_records_reads_uploaded_csv_without_a_temp_file():
@@ -37,6 +42,18 @@ def test_import_csv_records_reads_uploaded_csv_without_a_temp_file():
     assert records[0]["deal_id"] == "D-201"
     assert records[0]["deal_value"] == 125000
     assert records[0]["risk_level"] in {"LOW", "MEDIUM", "HIGH"}
+    assert records[0]["expected_close_date"] is None
+
+
+def test_synthetic_sample_rows_are_loaded_and_use_calendar_dates():
+    rows = synthetic_sample_rows()
+
+    assert rows
+    assert all(
+        row["expected_close_date"] is None
+        or isinstance(row["expected_close_date"], date)
+        for row in rows
+    )
 
 
 def test_import_csv_records_reports_missing_required_columns():

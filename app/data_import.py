@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date
 from io import BytesIO
 import math
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
@@ -48,11 +49,11 @@ def _coerce_numeric(value: Any) -> Optional[float]:
         return None
 
 
-def _coerce_date(value: Any) -> Optional[datetime]:
+def _coerce_date(value: Any) -> Optional[date]:
     if _is_blank(value):
         return None
     try:
-        return pd.to_datetime(value).to_pydatetime()
+        return pd.to_datetime(value).date()
     except Exception:
         return None
 

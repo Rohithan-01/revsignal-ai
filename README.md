@@ -1,16 +1,15 @@
 # RevSignal
 
-RevSignal is an AI-powered revenue copilot that identifies risky deals, explains why they are risky, recommends next-best actions, and surfaces a clean B2B sales dashboard for pipeline management.
+RevSignal is a prototype B2B sales deal risk assessment API and dashboard. Its
+assessments use explainable rule-based scoring; the project does not claim to
+use a trained machine-learning model or a live CRM integration.
 
-## Overview
-
-This repository implements a foundational Python FastAPI MVP for the core product flow:
-
-- CSV upload and normalization
-- validation for malformed and incomplete CRM records
-- rule-based explainable deal risk scoring
-- deterministic next-best actions
-- dashboard metrics based on imported deal data
+The backend supports deal creation and retrieval, activity tracking, calendar
+date-based overdue checks in the demo business timezone (`Asia/Kolkata`),
+activity-age signals, recommendations, and CSV import. Activity timestamps
+are timezone-aware instants normalized to UTC. The dashboard adds normalized
+CRM CSV import, deal filters, pipeline metrics, risk explanations, and
+recommended actions.
 
 ## Repository structure
 
@@ -20,95 +19,75 @@ app/
   database.py
   main.py
   models.py
-  recommendation_engine.py
   risk_engine.py
+  engine/
   static/index.html
-
 frontend/
-  app/                  # Next.js dashboard, deal views, import, recommendations
-  components/           # Shared navigation, data access, tables, and UI
-  lib/                  # Typed API client, formatting, and labelled demo data
-
+  app/
+  components/
+  lib/
 data/
   sample_crm.csv
-
 docs/
-  product-requirements.md
-  system-architecture.md
-  data-dictionary.md
-
 tests/
-  test_data_import.py
-  test_risk_engine.py
 ```
 
-## Local setup
+## Backend setup
 
-Use Python 3.9 or newer. From the repository root, create and activate a virtual environment:
-
-```bash
-python -m venv .venv
-```
-
-On Windows PowerShell:
+Use Python 3.10 or newer. From the repository root:
 
 ```powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 python -m uvicorn app.main:app --reload
 ```
 
-On macOS or Linux:
+The backend defaults to a local SQLite database. Set `DATABASE_URL` in the
+process environment to use another database. Startup creates missing tables;
+`create_all()` does not update existing table schemas, so existing databases
+may require an explicit migration before use.
 
-```bash
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
-```
+## Frontend setup
 
-Then open:
-
-- API docs: http://localhost:8000/docs
-
-The app creates `revsignal.db` in the repository root by default. To use a different database location, set `DATABASE_URL` in the process environment before starting the app. No external services are required.
-
-## Deployment
-
-For instructions to deploy the Next.js frontend and FastAPI backend together as a Vercel multi-service project, see [docs/deployment.md](docs/deployment.md). GitHub hosts the source code; it does not run the application.
-
-## Frontend
-
-The responsive Next.js dashboard runs separately from the FastAPI service. Start the backend on port 8000, then in another terminal:
+With the backend running, use another terminal:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. The frontend uses `NEXT_PUBLIC_API_BASE_URL` from `frontend/.env.local` (default `http://localhost:8000`). The backend allows the local frontend origins by default; set `CORS_ORIGINS` to a comma-separated list if your frontend uses a different origin.
-
-If the API cannot be reached, the interface explicitly switches to clearly labelled illustrative demo data. CSV import remains backend-only and will report an error rather than simulating a successful upload. The recommendations view reflects deal recommendations available from the analysis API; approval or execution is not implemented.
+Open http://localhost:3000. The frontend defaults to the local backend at
+`http://localhost:8000`. Configure `CORS_ORIGINS` if the frontend uses a
+different origin. If the API is unavailable, the dashboard clearly labels
+illustrative demo data rather than presenting it as live data.
 
 Frontend checks:
 
 ```powershell
-cd frontend
 npm test
 npm run typecheck
 npm run build
 ```
 
-The frontend uses Next.js App Router, React, TypeScript, Tailwind CSS, Recharts, Lucide icons, and Framer Motion. Respect for reduced-motion preferences is built in.
-
-## Sample data
-
-The repo includes `data/sample_crm.csv`, a clearly labelled synthetic CRM dataset for local development.
-
 ## API endpoints
 
+Core deal/activity API:
+
 - `GET /health`
+- `POST /deals`
+- `GET /deals`
+- `GET /deals/{deal_id}`
+- `POST /deals/import-csv`
+- `POST /activities`
+- `GET /activities`
+- `GET /deals/{deal_id}/activities`
+- `GET /deals/{deal_id}/activity-signal`
+
+Dashboard API:
+
 - `POST /api/deals/upload`
 - `GET /api/deals`
 - `GET /api/deals/{deal_id}`
@@ -117,12 +96,14 @@ The repo includes `data/sample_crm.csv`, a clearly labelled synthetic CRM datase
 - `POST /api/deals/{deal_id}/analyze`
 - `GET /seed/sample`
 
-Upload the included sample from the dashboard, or use the API:
+The repository includes synthetic sample CRM data at `data/sample_crm.csv`.
+The dashboard import recognizes common CRM header aliases and requires a
+deal ID, account name, deal value, and stage. Re-uploading an existing deal
+ID updates that imported deal.
 
-```bash
-curl -F "file=@data/sample_crm.csv" http://localhost:8000/api/deals/upload
-```
+## Deployment and documentation
 
-## Notes and assumptions
-
-This MVP intentionally uses a transparent, rule-based scoring model rather than claiming statistical model accuracy. Dashboard metrics are calculated from imported open deals.
+Deployment configuration is provided in `render.yaml` and `vercel.json`.
+See [docs/deployment.md](docs/deployment.md) for deployment assumptions and
+database-persistence limitations. Product and schema notes are in the
+`docs/` directory.
