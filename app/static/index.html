@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RevSignal Dashboard</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --muted: #5f6f89;
+        --text: #172033;
+        --primary: #2557d6;
+        --border: #dfe7f3;
+        --success: #1aa66a;
+        --warning: #d08a00;
+        --danger: #d64545;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+      }
+      .brand { font-size: 2rem; font-weight: 700; }
+      form { display: flex; gap: 10px; align-items: center; }
+      button, input {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        font-size: 1rem;
+      }
+      button {
+        background: var(--primary);
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .card-label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
+      .card-value { font-size: 2rem; font-weight: 700; margin-top: 10px; }
+      .section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+      .section-header {
+        margin-bottom: 12px;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); text-transform: uppercase; font-size: 0.75rem; }
+      .risk-pill {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.8rem;
+      }
+      .LOW { background: rgba(26,166,106,0.12); color: var(--success); }
+      .MEDIUM { background: rgba(208,138,0,0.12); color: var(--warning); }
+      .HIGH { background: rgba(214,69,69,0.12); color: var(--danger); }
+      .detail-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 16px;
+      }
+      .detail-box {
+        background: #f7f9ff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .muted { color: var(--muted); }
+      .deal-button {
+        background: transparent;
+        border: none;
+        color: var(--primary);
+        padding: 0;
+        cursor: pointer;
+        font-size: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand">RevSignal</div>
+        <form id="uploadForm">
+          <input type="file" id="csvFile" accept=".csv" />
+          <button type="submit">Upload CSV</button>
+        </form>
+      </div>
+
+      <div id="metrics" class="cards"></div>
+
+      <div class="section">
+        <div class="section-header">Open pipeline</div>
+        <div id="dealTable"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Deal detail</div>
+        <div id="dealDetail" class="detail-grid"></div>
+      </div>
+    </div>
+
+    <script>
+      const currency = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value || 0);
+
+      function renderMetrics(data) {
+        const cards = [
+          { label: 'Total open pipeline value', value: currency(data.total_open_pipeline_value) },
+          { label: 'Revenue at high risk', value: currency(data.revenue_high_risk) },
+          { label: 'High-risk deals', value: data.high_risk_deals },
+          { label: 'Deals needing attention', value: data.deals_needing_attention }
+        ];
+        document.getElementById('metrics').innerHTML = cards.map(card => `
+          <div class="card">
+            <div class="card-label">${card.label}</div>
+            <div class="card-value">${card.value}</div>
+          </div>
+        `).join('');
+      }
+
+      function renderTable(deals) {
+        if (!deals.length) {
+          document.getElementById('dealTable').innerHTML = '<div class="muted">No deals loaded yet. Upload a CSV to begin.</div>';
+          return;
+        }
+
+        document.getElementById('dealTable').innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Stage</th>
+                <th>Value</th>
+                <th>Risk</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${deals.map(deal => `
+                <tr>
+                  <td><button class="deal-button" data-deal-id="${deal.deal_id}">${deal.account_name}</button></td>
+                  <td>${deal.stage}</td>
+                  <td>${currency(deal.deal_value)}</td>
+                  <td><span class="risk-pill ${deal.risk_level}">${deal.risk_level}</span> (${deal.risk_score})</td>
+                  <td>${deal.recommended_action || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        document.querySelectorAll('.deal-button').forEach(btn => {
+          btn.addEventListener('click', () => fetchDeal(btn.dataset.dealId));
+        });
+      }
+
+      function renderDetail(deal) {
+        document.getElementById('dealDetail').innerHTML = `
+          <div class="detail-box">
+            <h3>${deal.account_name}</h3>
+            <p><strong>Deal ID:</strong> ${deal.deal_id}</p>
+            <p><strong>Stage:</strong> ${deal.stage}</p>
+            <p><strong>Status:</strong> ${deal.status}</p>
+            <p><strong>Deal value:</strong> ${currency(deal.deal_value)}</p>
+            <p><strong>Expected close:</strong> ${deal.expected_close_date || 'N/A'}</p>
+            <p><strong>Last activity:</strong> ${deal.last_activity_date || 'N/A'}</p>
+            <p><strong>Stakeholders:</strong> ${deal.stakeholder_count ?? 'N/A'}</p>
+          </div>
+          <div class="detail-box">
+            <p><strong>Risk:</strong> <span class="risk-pill ${deal.risk_level}">${deal.risk_level}</span> ${deal.risk_score}</p>
+            <h4>Evidence</h4>
+            <ul>${(deal.risk_reasons || []).map(item => `<li>${item}</li>`).join('')}</ul>
+            <h4>Recommended action</h4>
+            <p>${deal.recommended_action || 'No recommendation available.'}</p>
+          </div>
+        `;
+      }
+
+      async function fetchDeals() {
+        const response = await fetch('/api/deals');
+        const deals = await response.json();
+        renderTable(deals);
+        if (deals.length) fetchDeal(deals[0].deal_id);
+      }
+
+      async function fetchMetrics() {
+        const response = await fetch('/api/metrics');
+        const metrics = await response.json();
+        renderMetrics(metrics);
+        renderTable(metrics.top_deals || []);
+        if ((metrics.top_deals || []).length) fetchDeal(metrics.top_deals[0].deal_id);
+      }
+
+      async function fetchDeal(dealId) {
+        const response = await fetch(`/api/deals/${dealId}`);
+        if (!response.ok) return;
+        const deal = await response.json();
+        renderDetail(deal);
+      }
+
+      document.getElementById('uploadForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const input = document.getElementById('csvFile');
+        if (!input.files.length) return;
+
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+
+        const response = await fetch('/api/deals/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          fetchMetrics();
+          fetchDeals();
+        } else {
+          const error = await response.json();
+          alert(error.detail || 'Upload failed');
+        }
+      });
+
+      fetchMetrics();
+      fetchDeals();
+    </script>
+  </body>
+</html>

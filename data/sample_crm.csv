@@ -1,0 +1,9 @@
+deal_id,account_name,deal_value,stage,created_date,expected_close_date,last_activity_date,activity_count,meeting_count,email_count,stakeholder_count,status
+D-1001,Northwind Labs,150000,Proposal,2026-06-01,2026-10-25,2026-10-05,5,1,8,3,open
+D-1002,Harbor Retail,68000,Negotiation,2026-08-01,2026-10-12,2026-09-15,2,0,2,1,open
+D-1003,Apex Manufacturing,220000,Discovery,2026-05-01,2026-11-15,2026-09-28,1,0,1,1,open
+D-1004,Meridian Health,310000,Proposal,2026-07-15,2026-10-20,2026-09-27,4,2,6,4,open
+D-1005,Velora Systems,420000,Qualified,2026-04-15,2026-11-01,2026-10-11,7,3,10,5,open
+D-1006,Summit Legal,96000,Negotiation,2026-06-15,2026-09-30,2026-08-22,2,1,2,2,closed_lost
+D-1007,BluePeak Financial,540000,Proposal,2026-05-28,2026-10-28,2026-10-13,9,4,12,5,open
+D-1008,Greenline Logistics,175000,Qualified,2026-04-08,2026-10-18,2026-10-16,6,2,7,3,open

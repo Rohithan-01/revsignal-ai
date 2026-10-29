@@ -125,6 +125,37 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
             "2026-11-10",
         )
 
+    async def test_dashboard_csv_import_and_metrics_preserve_crm_fields(self):
+        csv_content = (
+            "deal_id,account_name,deal_value,stage,status,created_date,"
+            "expected_close_date,last_activity_date,activity_count,"
+            "meeting_count,email_count,stakeholder_count\n"
+            "D-900,Sample Account,50000,Proposal,open,2026-10-01,"
+            "2026-11-15,2026-10-27,5,2,3,4\n"
+        )
+
+        uploaded = await self.client.post(
+            "/api/deals/upload",
+            files={"file": ("sample.csv", csv_content, "text/csv")},
+        )
+
+        self.assertEqual(uploaded.status_code, 200)
+        self.assertEqual(uploaded.json()["records_imported"], 1)
+
+        deals = await self.client.get("/api/deals")
+        self.assertEqual(deals.status_code, 200)
+        self.assertEqual(deals.json()[0]["deal_id"], "D-900")
+        self.assertEqual(deals.json()[0]["account_name"], "Sample Account")
+        self.assertEqual(deals.json()[0]["expected_close_date"], "2026-11-15")
+
+        metrics = await self.client.get("/api/metrics")
+        self.assertEqual(metrics.status_code, 200)
+        self.assertEqual(metrics.json()["total_open_pipeline_value"], 50000)
+
+        analyzed = await self.client.post("/api/deals/D-900/analyze")
+        self.assertEqual(analyzed.status_code, 200)
+        self.assertEqual(analyzed.json()["deal_id"], "D-900")
+
     async def test_import_csv_invalid_row_does_not_insert_partial_deals(self):
         csv_content = (
             "company,deal_value,stage,probability,expected_close_date\n"

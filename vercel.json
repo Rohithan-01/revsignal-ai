@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "revsignal-api": {
+      "root": ".",
+      "framework": "fastapi",
+      "entrypoint": "app.main:app",
+      "buildCommand": "pip install -r requirements.txt"
+    },
+    "frontend": {
+      "root": "frontend",
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "revsignal-api",
+          "format": "url",
+          "env": "REVSIGNAL_API_URL"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
+  ]
+}

@@ -24,6 +24,14 @@ class DealResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def normalize_created_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+
 class DealCreate(BaseModel):
     company: str = Field(min_length=1, max_length=255)
     deal_value: float = Field(ge=0, allow_inf_nan=False)
@@ -100,3 +108,41 @@ class ActivityResponse(BaseModel):
 class DealDetailResponse(DealResponse):
     latest_activity_date: datetime | None
     activities: list[ActivityResponse]
+
+
+class DealRead(BaseModel):
+    id: int | None = None
+    deal_id: str
+    account_name: str
+    deal_value: float
+    stage: str
+    status: str
+    created_date: date | None = None
+    expected_close_date: date | None = None
+    last_activity_date: date | None = None
+    activity_count: int | None = None
+    meeting_count: int | None = None
+    email_count: int | None = None
+    stakeholder_count: int | None = None
+    risk_score: int = 0
+    risk_level: str = "LOW"
+    risk_reasons: list[str] = Field(default_factory=list)
+    recommended_action: str = ""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UploadResponse(BaseModel):
+    success: bool
+    message: str
+    records_imported: int
+
+
+class MetricsResponse(BaseModel):
+    total_open_pipeline_value: float
+    revenue_high_risk: float
+    high_risk_deals: int
+    deals_needing_attention: int
+    deal_distribution_by_risk: dict[str, int]
+    pipeline_value_by_stage: dict[str, float]
+    top_deals: list[DealRead]
