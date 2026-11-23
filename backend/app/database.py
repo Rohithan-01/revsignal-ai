@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./revsignal.db")
 database_url = make_url(DATABASE_URL)
 
@@ -33,5 +33,5 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(DATABASE_URL, echo=False, hide_parameters=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)

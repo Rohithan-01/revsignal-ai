@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, synonym
 
-from app.database import Base
+from .database import Base
 
 
 class Deal(Base):
@@ -18,13 +17,18 @@ class Deal(Base):
         unique=True,
         index=True,
         nullable=False,
-        default=lambda: str(uuid4()),
     )
     company: Mapped[str] = mapped_column(String(255), nullable=False)
     account_name = synonym("company")
     deal_value: Mapped[float] = mapped_column(Float, nullable=False)
     stage: Mapped[str] = mapped_column(String(100), nullable=False)
     probability: Mapped[float] = mapped_column(Float, nullable=False, default=50.0)
+    probability_is_known: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
     created_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     expected_close_date: Mapped[date | None] = mapped_column(Date, nullable=True)

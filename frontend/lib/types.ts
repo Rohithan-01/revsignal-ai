@@ -7,6 +7,8 @@ export interface Deal {
   deal_value: number;
   stage: string;
   status: string;
+  probability: number;
+  probability_is_known: boolean;
   created_date: string | null;
   expected_close_date: string | null;
   last_activity_date: string | null;

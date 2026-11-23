@@ -4,8 +4,37 @@ from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.engine.crm_recommendation_engine import generate_crm_recommendation
-from app.engine.risk_engine import DEMO_BUSINESS_TIMEZONE
+from .engine.crm_recommendation_engine import generate_crm_recommendation
+from .engine.risk_engine import DEMO_BUSINESS_TIMEZONE, calculate_risk
+
+
+RISK_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+
+
+def risk_level_from_score(score: int) -> str:
+    if score < 35:
+        return "LOW"
+    if score < 70:
+        return "MEDIUM"
+    return "HIGH"
+
+
+def calculate_crm_risk_level(
+    risk_score: int,
+    probability: float,
+    probability_is_known: bool,
+) -> tuple[str, str | None]:
+    score_level = risk_level_from_score(risk_score)
+    if not probability_is_known:
+        return score_level, None
+
+    probability_level = calculate_risk(probability)
+    if RISK_RANK[probability_level] > RISK_RANK[score_level]:
+        return (
+            probability_level,
+            f"Closing probability is {probability:g}%, raising risk to {probability_level}.",
+        )
+    return score_level, None
 
 
 def _coerce_date(value: Any) -> date | None:
@@ -55,6 +84,20 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
     meeting_count = record.get("meeting_count")
     email_count = record.get("email_count")
     stakeholder_count = record.get("stakeholder_count")
+    raw_probability = record.get("probability")
+    probability_is_known = bool(
+        record.get(
+            "probability_is_known",
+            "probability" in record and raw_probability is not None,
+        )
+    )
+    probability = (
+        float(raw_probability)
+        if raw_probability is not None
+        else 50.0
+    )
+    if probability_is_known and not 0 <= probability <= 100:
+        raise ValueError("probability must be between 0 and 100.")
 
     reasons: list[str] = []
     score = 0
@@ -119,12 +162,13 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
 
     score = max(0, min(100, score))
 
-    if score < 35:
-        risk_level = "LOW"
-    elif score < 70:
-        risk_level = "MEDIUM"
-    else:
-        risk_level = "HIGH"
+    risk_level, probability_reason = calculate_crm_risk_level(
+        score,
+        probability,
+        probability_is_known,
+    )
+    if probability_reason is not None:
+        reasons.append(probability_reason)
 
     recommended_action = generate_crm_recommendation(
         risk_level=risk_level,
@@ -145,6 +189,8 @@ def analyze_deal(record: dict[str, Any]) -> dict[str, Any]:
         "deal_value": float(deal_value),
         "stage": stage,
         "status": status,
+        "probability": probability,
+        "probability_is_known": probability_is_known,
         "created_date": created_date,
         "expected_close_date": expected_close_date,
         "last_activity_date": last_activity_date,

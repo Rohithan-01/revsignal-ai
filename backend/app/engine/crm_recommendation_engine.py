@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
-from app.engine.risk_engine import DEMO_BUSINESS_TIMEZONE
+from .risk_engine import DEMO_BUSINESS_TIMEZONE
 
 
 def generate_crm_recommendation(
@@ -21,11 +21,25 @@ def generate_crm_recommendation(
                 "Review the close date, confirm customer commitment, and "
                 "escalate the account if the renewal decision is still pending."
             )
+    if days_since_activity is None:
+        return (
+            "Schedule a customer follow-up to re-establish engagement and "
+            "confirm the next steps and expected close plan."
+        )
 
-    if days_since_activity is not None and days_since_activity > 30:
+    if days_since_activity > 30:
         return (
             "Schedule a customer follow-up within 48 hours and confirm the "
-            "buying timeline, next milestones, and open questions."
+            "buying timeline, next milestones, expected close plan, and open "
+            "questions."
+        )
+
+    if expected_close_date is not None and (
+        expected_close_date - local_today
+    ).days <= 14:
+        return (
+            "Confirm customer commitment, next steps, and the close plan "
+            "before the expected close date."
         )
 
     if stakeholder_count is not None and stakeholder_count < 2:

@@ -25,6 +25,11 @@ frontend from `frontend` with `npm run dev`. The frontend defaults to
 `http://localhost:8000` in development. The Vercel service binding is only
 available at runtime in deployed frontend functions.
 
+For local development, start the backend from `backend/` with
+`python -m uvicorn app.main:app --reload`. Render and Vercel keep their
+repository-root entrypoint (`backend.app.main:app`), which uses the same
+package-relative imports.
+
 ## Database persistence
 
 The backend defaults to SQLite. A serverless deployment's local filesystem is

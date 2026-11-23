@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.engine.activity_engine import (
+from backend.app.engine.activity_engine import (
     ACTIVITY_FUTURE_SKEW_TOLERANCE,
     calculate_activity_signal,
     calculate_days_since_last_activity,
