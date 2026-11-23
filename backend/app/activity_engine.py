@@ -1,4 +1,4 @@
-from app.engine.activity_engine import (
+from .engine.activity_engine import (
     ACTIVITY_FUTURE_SKEW_TOLERANCE,
     calculate_activity_signal,
     calculate_days_since_last_activity,

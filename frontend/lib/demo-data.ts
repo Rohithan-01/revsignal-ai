@@ -26,6 +26,8 @@ function demoDeal(
     deal_value,
     stage,
     status,
+    probability: 50,
+    probability_is_known: false,
     created_date: null,
     expected_close_date,
     last_activity_date,
@@ -41,14 +43,14 @@ function demoDeal(
 }
 
 export const demoDeals: Deal[] = [
-  demoDeal("D-1002", "Harbor Retail", 68_000, "Negotiation", "2026-10-12", "2026-09-15", 2, 0, 2, 1, 86, ["The expected close date is overdue.", "Stakeholder coverage appears limited.", "No meetings have been recorded."], "Review the close date, confirm customer commitment, and escalate the account if the decision is still pending."),
-  demoDeal("D-1003", "Apex Manufacturing", 220_000, "Discovery", "2026-11-15", "2026-09-28", 1, 0, 1, 1, 72, ["The opportunity has very limited recent activity.", "No meetings have been recorded.", "Stakeholder coverage appears limited."], "Identify missing decision-makers and validate the buying committee before the next conversation."),
-  demoDeal("D-1004", "Meridian Health", 310_000, "Proposal", "2026-10-20", "2026-09-27", 4, 2, 6, 4, 58, ["Customer activity has slowed.", "The expected close date is approaching."], "Stay engaged with the customer, confirm the next milestone, and monitor the deal closely."),
-  demoDeal("D-1008", "Greenline Logistics", 175_000, "Qualified", "2026-10-18", "2026-10-16", 6, 2, 7, 3, 40, ["The expected close date is approaching."], "Stay engaged with the customer, confirm the next milestone, and monitor the deal closely."),
-  demoDeal("D-1001", "Northwind Labs", 150_000, "Proposal", "2026-10-25", "2026-10-05", 5, 1, 8, 3, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
-  demoDeal("D-1005", "Velora Systems", 420_000, "Qualified", "2026-11-01", "2026-10-11", 7, 3, 10, 5, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
-  demoDeal("D-1007", "BluePeak Financial", 540_000, "Proposal", "2026-10-28", "2026-10-13", 9, 4, 12, 5, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
-  demoDeal("D-1006", "Summit Legal", 96_000, "Negotiation", "2026-09-30", "2026-08-22", 2, 1, 2, 2, 65, ["The expected close date is overdue.", "Customer activity has slowed."], "Review the close date, confirm customer commitment, and escalate if the decision is pending.", "lost"),
+  demoDeal("D-106", "Harbor Retail", 68_000, "Negotiation", "2026-10-12", "2026-09-15", 2, 0, 2, 1, 86, ["The expected close date is overdue.", "Stakeholder coverage appears limited.", "No meetings have been recorded."], "Review the close date, confirm customer commitment, and escalate the account if the decision is still pending."),
+  demoDeal("D-107", "Apex Manufacturing", 220_000, "Discovery", "2026-11-15", "2026-09-28", 1, 0, 1, 1, 72, ["The opportunity has very limited recent activity.", "No meetings have been recorded.", "Stakeholder coverage appears limited."], "Identify missing decision-makers and validate the buying committee before the next conversation."),
+  demoDeal("D-108", "Meridian Health", 310_000, "Proposal", "2026-10-20", "2026-09-27", 4, 2, 6, 4, 58, ["Customer activity has slowed.", "The expected close date is approaching."], "Stay engaged with the customer, confirm the next milestone, and monitor the deal closely."),
+  demoDeal("D-112", "Greenline Logistics", 175_000, "Qualified", "2026-10-18", "2026-10-16", 6, 2, 7, 3, 40, ["The expected close date is approaching."], "Stay engaged with the customer, confirm the next milestone, and monitor the deal closely."),
+  demoDeal("D-105", "Northwind Labs", 150_000, "Proposal", "2026-10-25", "2026-10-05", 5, 1, 8, 3, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
+  demoDeal("D-109", "Velora Systems", 420_000, "Qualified", "2026-11-01", "2026-10-11", 7, 3, 10, 5, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
+  demoDeal("D-111", "BluePeak Financial", 540_000, "Proposal", "2026-10-28", "2026-10-13", 9, 4, 12, 5, 27, ["The expected close date is approaching."], "Maintain the current outreach cadence and validate the next customer milestone."),
+  demoDeal("D-110", "Summit Legal", 96_000, "Negotiation", "2026-09-30", "2026-08-22", 2, 1, 2, 2, 65, ["The expected close date is overdue.", "Customer activity has slowed."], "Review the close date, confirm customer commitment, and escalate if the decision is pending.", "lost"),
 ];
 
 export function demoMetrics(deals: Deal[]): Metrics {

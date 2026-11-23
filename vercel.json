@@ -4,8 +4,8 @@
     "revsignal-api": {
       "root": ".",
       "framework": "fastapi",
-      "entrypoint": "app.main:app",
-      "buildCommand": "pip install -r requirements.txt"
+      "entrypoint": "backend.app.main:app",
+      "buildCommand": "pip install -r backend/requirements.txt"
     },
     "frontend": {
       "root": "frontend",

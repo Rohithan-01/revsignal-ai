@@ -14,22 +14,27 @@ recommended actions.
 ## Repository structure
 
 ```text
-app/
-  data_import.py
-  database.py
-  main.py
-  models.py
-  risk_engine.py
-  engine/
-  static/index.html
+backend/
+  app/
+    data_import.py
+    database.py
+    main.py
+    models.py
+    risk_engine.py
+    engine/
+    static/index.html
+  migrations/manual/
+  tests/
+  requirements.txt
+  requirements-dev.txt
 frontend/
   app/
   components/
   lib/
 data/
   sample_crm.csv
+  sample_deals.csv
 docs/
-tests/
 ```
 
 ## Backend setup
@@ -39,7 +44,8 @@ Use Python 3.10 or newer. From the repository root:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.txt
+python -m pip install -r backend/requirements-dev.txt
+Set-Location backend
 python -m uvicorn app.main:app --reload
 ```
 
@@ -47,6 +53,12 @@ The backend defaults to a local SQLite database. Set `DATABASE_URL` in the
 process environment to use another database. Startup creates missing tables;
 `create_all()` does not update existing table schemas, so existing databases
 may require an explicit migration before use.
+
+Run backend tests from the repository root with:
+
+```powershell
+python -m pytest backend/tests
+```
 
 ## Frontend setup
 
@@ -98,8 +110,14 @@ Dashboard API:
 
 The repository includes synthetic sample CRM data at `data/sample_crm.csv`.
 The dashboard import recognizes common CRM header aliases and requires a
-deal ID, account name, deal value, and stage. Re-uploading an existing deal
-ID updates that imported deal.
+canonical deal ID, account name, deal value, and stage. The CRM upload endpoint
+rejects existing IDs without changing records; `/seed/sample` upserts the
+included CRM dataset. The legacy sample at `data/sample_deals.csv` has stable
+IDs and repeated uploads are rejected rather than duplicated.
+
+The confirmed business-ID mapping and the guarded, reversible database
+migration are documented in [docs/deal-id-migration.md](docs/deal-id-migration.md).
+The migration is manual and has not been applied.
 
 ## Deployment and documentation
 

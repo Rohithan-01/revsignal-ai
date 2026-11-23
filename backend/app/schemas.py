@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.engine.activity_engine import normalize_activity_timestamp
+from .engine.activity_engine import normalize_activity_timestamp
 
 
 class DealResponse(BaseModel):
@@ -12,6 +12,7 @@ class DealResponse(BaseModel):
     deal_value: float
     stage: str
     probability: float
+    probability_is_known: bool = False
     risk_level: str
     overall_risk_level: str
     risk_reasons: list[str]
@@ -36,7 +37,7 @@ class DealCreate(BaseModel):
     company: str = Field(min_length=1, max_length=255)
     deal_value: float = Field(ge=0, allow_inf_nan=False)
     stage: str = Field(min_length=1, max_length=100)
-    probability: float = Field(ge=0, le=100)
+    probability: float = Field(default=50.0, ge=0, le=100)
     expected_close_date: date | None = None
 
     @field_validator("expected_close_date", mode="before")
@@ -117,6 +118,8 @@ class DealRead(BaseModel):
     deal_value: float
     stage: str
     status: str
+    probability: float = 50.0
+    probability_is_known: bool = False
     created_date: date | None = None
     expected_close_date: date | None = None
     last_activity_date: date | None = None

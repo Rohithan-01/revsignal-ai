@@ -6,9 +6,9 @@ The current MVP uses a single FastAPI service backed by SQLite. The app stores d
 
 ## Layers
 
-- API layer: `app/main.py`
-- persistence: `app/database.py` and `app/models.py`
-- CSV normalization: `app/data_import.py`
-- risk logic: `app/risk_engine.py`
-- recommendations: `app/recommendation_engine.py`
-- frontend: `app/static/index.html`
+- API layer: `backend/app/main.py`
+- persistence: `backend/app/database.py` and `backend/app/models.py`
+- CSV normalization: `backend/app/data_import.py`
+- risk logic: `backend/app/risk_engine.py`
+- recommendations: `backend/app/engine/recommendation_engine.py`
+- legacy frontend: `backend/app/static/index.html`

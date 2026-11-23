@@ -39,11 +39,12 @@ def calculate_overall_risk(
     is_overdue: bool,
     activity_status: str,
     has_expected_close_date: bool = True,
+    probability_is_known: bool = True,
 ) -> tuple[str, list[str]]:
     risk_reasons = []
     risk_signal_count = 0
 
-    if probability < 30:
+    if probability_is_known and probability < 30:
         risk_reasons.append("Low closing probability")
         risk_signal_count += 1
 

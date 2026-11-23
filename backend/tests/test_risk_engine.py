@@ -1,8 +1,8 @@
 
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from app.engine.risk_engine import (
+from backend.app.engine.risk_engine import (
     calculate_overall_risk,
     calculate_risk,
     is_deal_overdue,
@@ -145,7 +145,86 @@ class CalculateOverallRiskTests(unittest.TestCase):
         self.assertFalse(is_deal_overdue(None))
 
 
-from app.risk_engine import analyze_deal
+from backend.app.risk_engine import analyze_deal, calculate_crm_risk_level
+
+
+def _balanced_deal_record(**overrides):
+    record = {
+        "deal_id": "D-300",
+        "account_name": "Probability Account",
+        "deal_value": 50000,
+        "stage": "Proposal",
+        "status": "open",
+        "created_date": date.today(),
+        "expected_close_date": date.today() + timedelta(days=60),
+        "last_activity_date": date.today(),
+        "activity_count": 5,
+        "meeting_count": 2,
+        "email_count": 5,
+        "stakeholder_count": 3,
+    }
+    record.update(overrides)
+    return record
+
+
+def test_known_probability_levels_combine_with_score_based_risk():
+    expected_levels = {25: "HIGH", 40: "MEDIUM", 50: "MEDIUM", 75: "LOW"}
+    for probability, expected_level in expected_levels.items():
+        result = analyze_deal(
+            _balanced_deal_record(
+                probability=probability,
+                probability_is_known=True,
+            )
+        )
+        assert result["risk_level"] == expected_level
+        assert result["probability_is_known"] is True
+
+
+def test_omitted_and_explicit_default_probability_have_distinct_provenance():
+    unknown = analyze_deal(_balanced_deal_record())
+    explicit_default = analyze_deal(
+        _balanced_deal_record(probability=50, probability_is_known=True)
+    )
+
+    assert unknown["probability"] == explicit_default["probability"] == 50
+    assert unknown["probability_is_known"] is False
+    assert explicit_default["probability_is_known"] is True
+    assert unknown["risk_level"] == "LOW"
+    assert explicit_default["risk_level"] == "MEDIUM"
+
+
+def test_unknown_probability_does_not_change_risk_or_add_probability_reason():
+    unknown = analyze_deal(
+        _balanced_deal_record(probability=25, probability_is_known=False)
+    )
+
+    assert unknown["risk_level"] == "LOW"
+    assert not any("probability" in reason.lower() for reason in unknown["risk_reasons"])
+
+
+def test_probability_only_raises_score_risk_and_adds_reason_when_known():
+    assert calculate_crm_risk_level(40, 25, True) == (
+        "HIGH",
+        "Closing probability is 25%, raising risk to HIGH.",
+    )
+    assert calculate_crm_risk_level(40, 25, False) == ("MEDIUM", None)
+    assert calculate_crm_risk_level(80, 25, True) == ("HIGH", None)
+
+
+def test_missing_activity_and_close_date_recommendations_remain_actionable():
+    missing_activity = analyze_deal(
+        _balanced_deal_record(last_activity_date=None)
+    )
+    overdue = analyze_deal(
+        _balanced_deal_record(expected_close_date=date.today() - timedelta(days=1))
+    )
+    approaching_close = analyze_deal(
+        _balanced_deal_record(expected_close_date=date.today() + timedelta(days=10))
+    )
+
+    assert "customer follow-up" in missing_activity["recommended_action"].lower()
+    assert "close date" in overdue["recommended_action"].lower()
+    assert "close plan" in approaching_close["recommended_action"].lower()
 
 
 def test_high_risk_is_identified_for_overdue_low_activity_deal():
